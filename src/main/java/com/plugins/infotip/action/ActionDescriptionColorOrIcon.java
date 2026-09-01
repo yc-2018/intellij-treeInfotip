@@ -33,7 +33,7 @@ public class ActionDescriptionColorOrIcon extends AnAction {
         }
         final SelectColorIconsView dialog = new SelectColorIconsView();
         dialog.pack();
-        dialog.setTitle("Select Icon Or Color");
+        dialog.setTitle("选择图标或颜色");
         dialog.setPreferredSize(new Dimension(380, 200));
         dialog.setSize(380, 200);
         dialog.setLocationRelativeTo(null);

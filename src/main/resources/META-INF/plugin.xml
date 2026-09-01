@@ -134,16 +134,19 @@
 
     <actions>
         <!-- Add your actions here -->
-        <group id="StudyAction.MyGroup" text="Add Description" popup="true" icon="AllIcons.Actions.MenuPaste">
+        <group id="StudyAction.MyGroup" text="目录备注" popup="true" icon="AllIcons.Actions.MenuPaste">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="ReplaceInPath"/>
-            <action id="FirstAction" class="com.plugins.infotip.action.ActionDescriptionText" text="Add Text Remarks"
-                    description="添加备注信息"/>
+            <action id="FirstAction" class="com.plugins.infotip.action.ActionDescriptionText" text="添加文字备注"
+                    description="给选中的文件或目录添加备注信息"/>
             <action id="FirstAction2" class="com.plugins.infotip.action.ActionDescriptionColorOrIcon"
-                    text="Add Color Or Icons"
-                    description="添加图标信息"/>
+                    text="添加颜色或图标"
+                    description="给选中的文件或目录设置图标、文字颜色与背景色"/>
+            <action id="FirstAction3" class="com.plugins.infotip.action.ActionDescriptionStrikethrough"
+                    text="添加/取消删除线"
+                    description="给选中的文件或目录名称添加或取消删除线"/>
             <separator/>
-            <action id="FirstAction5" class="com.plugins.infotip.action.ActionDescriptionClearAll" text="Clear All"
-                    description="清理节点设置"/>
+            <action id="FirstAction5" class="com.plugins.infotip.action.ActionDescriptionClearAll" text="清除全部设置"
+                    description="清理选中节点的全部备注与样式设置"/>
         </group>
 
     </actions>

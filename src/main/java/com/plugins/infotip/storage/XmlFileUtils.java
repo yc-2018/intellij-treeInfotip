@@ -90,7 +90,7 @@ public class XmlFileUtils {
                 for (VirtualFile file : files) {
                     String presentableUrl = file.getCanonicalPath();
                     if (presentableUrl.length() < basePath.length()) {
-                        Messages.showMessageDialog(project, "Unable to get the root path of the file", "Can't Get Path", Messages.getErrorIcon());
+                        Messages.showMessageDialog(project, "无法获取该文件的根路径", "获取路径失败", Messages.getErrorIcon());
                         break;
                     }
                     String asBasePath = presentableUrl.substring(basePath.length(), presentableUrl.length());
@@ -130,7 +130,7 @@ public class XmlFileUtils {
                 }
             }
         } else {
-            Messages.showMessageDialog(project, "Unable to get the root path of the project", "Can't Get Path", Messages.getErrorIcon());
+            Messages.showMessageDialog(project, "无法获取项目的根路径", "获取路径失败", Messages.getErrorIcon());
         }
     }
 

@@ -35,7 +35,7 @@ import java.util.List;
 public class NoteTreeView extends Tree implements ToolWindowFactory {
 
     public NoteTreeView() {
-        super(new DefaultMutableTreeNode("Remarks"));
+        super(new DefaultMutableTreeNode("备注列表"));
     }
 
     @Override

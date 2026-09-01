@@ -73,10 +73,16 @@ public class TreesStyle {
         presentation.setLocationString(xmlEntity.getTitle());
         final Color backgroundColor = ColorsUtils.toColor(xmlEntity.getBackgroundColor());
         final Color textColor = ColorsUtils.toColor(xmlEntity.getTextColor());
-        if (null != textColor) {
-            //设置文本颜色
+        final boolean strikethrough = xmlEntity.isStrikethroughEnabled();
+        if (null != textColor || strikethrough) {
+            //设置文本颜色与删除线,两者互不依赖且可叠加:
+            //只设颜色时用 PLAIN + textColor;只设删除线时用 STRIKEOUT + null(沿用主题前景色);
+            //两者都设时用 STRIKEOUT + textColor。
+            final int style = strikethrough
+                    ? SimpleTextAttributes.STYLE_STRIKEOUT
+                    : SimpleTextAttributes.STYLE_PLAIN;
             presentation.clearText();
-            presentation.addText(name, new SimpleTextAttributes(0, textColor));
+            presentation.addText(name, new SimpleTextAttributes(style, textColor));
         }
         if (null != backgroundColor) {
             //设置背景色

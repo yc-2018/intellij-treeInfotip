@@ -44,6 +44,8 @@ public class XmlStorage {
     private final static String TEXT_COLOR = "textColor";
 
     private final static String BACKGROUND_COLOR = "backgroundColor";
+
+    private final static String STRIKETHROUGH = "strikethrough";
     //endregion 节点常量
 
     private final static ConcurrentHashMap<Project, CopyOnWriteArrayList<XmlEntity>> XML_STORAGE_LIST = new ConcurrentHashMap<Project, CopyOnWriteArrayList<XmlEntity>>();
@@ -118,6 +120,8 @@ public class XmlStorage {
                     childTag.setAttribute(ICON, xmlEntity.getIcon());
                     childTag.setAttribute(TEXT_COLOR, xmlEntity.getTextColor());
                     childTag.setAttribute(BACKGROUND_COLOR, xmlEntity.getBackgroundColor());
+                    //关闭时传 null，setAttribute 会把该属性移除，避免留下 strikethrough=""
+                    childTag.setAttribute(STRIKETHROUGH, xmlEntity.isStrikethroughEnabled() ? "true" : null);
                     XmlFileUtils.saveFileXml(project);
                 });
             }
@@ -178,6 +182,9 @@ public class XmlStorage {
                 childTag.setAttribute(ICON, xmlEntity.getIcon());
                 childTag.setAttribute(TEXT_COLOR, xmlEntity.getTextColor());
                 childTag.setAttribute(BACKGROUND_COLOR, xmlEntity.getBackgroundColor());
+                if (xmlEntity.isStrikethroughEnabled()) {
+                    childTag.setAttribute(STRIKETHROUGH, "true");
+                }
                 WriteCommandAction.runWriteCommandAction(project, new Runnable() {
                     @Override
                     public void run() {
@@ -199,8 +206,9 @@ public class XmlStorage {
         XmlAttribute xml_icons = tag.getAttribute(ICON);
         XmlAttribute xml_text_color = tag.getAttribute(TEXT_COLOR);
         XmlAttribute xml_background_color = tag.getAttribute(BACKGROUND_COLOR);
+        XmlAttribute xml_strikethrough = tag.getAttribute(STRIKETHROUGH);
         if (xml_path != null) {
-            xmlEntity.setPath(xml_path.getValue()).setTitle(xml_title == null ? "" : xml_title.getValue()).setExtension(xml_extension == null ? "" : xml_extension.getValue()).setPresentableText(xml_presentable_text == null ? "" : xml_presentable_text.getValue()).setTooltipTitle(xml_tooltip_title == null ? "" : xml_tooltip_title.getValue()).setIcon(xml_icons == null ? "" : xml_icons.getValue()).setTextColor(xml_text_color == null ? "" : xml_text_color.getValue()).setBackgroundColor(xml_background_color == null ? "" : xml_background_color.getValue()).setTag(tag);
+            xmlEntity.setPath(xml_path.getValue()).setTitle(xml_title == null ? "" : xml_title.getValue()).setExtension(xml_extension == null ? "" : xml_extension.getValue()).setPresentableText(xml_presentable_text == null ? "" : xml_presentable_text.getValue()).setTooltipTitle(xml_tooltip_title == null ? "" : xml_tooltip_title.getValue()).setIcon(xml_icons == null ? "" : xml_icons.getValue()).setTextColor(xml_text_color == null ? "" : xml_text_color.getValue()).setBackgroundColor(xml_background_color == null ? "" : xml_background_color.getValue()).setStrikethrough(xml_strikethrough == null ? null : xml_strikethrough.getValue()).setTag(tag);
             return xmlEntity;
         }
         return null;

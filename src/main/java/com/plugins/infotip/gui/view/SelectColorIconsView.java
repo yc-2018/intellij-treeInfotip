@@ -96,7 +96,7 @@ public class SelectColorIconsView extends JDialog {
 
 
     private void onColor(String type, MyColorButton myColorButton) {
-        Color newColor = ColorChooser.chooseColor(this, "Choose Color", Color.white, true);
+        Color newColor = ColorChooser.chooseColor(this, "选择颜色", Color.white, true);
         if (null != newColor) {
             myColorButton.setColor(newColor);
             this.mapColor.put(type, Pair.with(myColorButton, newColor));
