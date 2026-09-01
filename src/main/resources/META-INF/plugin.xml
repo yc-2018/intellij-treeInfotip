@@ -3,8 +3,8 @@
     <name>TreeInfotip</name>
     <vendor email="chinacclk@gmail.com" url="https://github.com/Link-Kou/intellij-treeInfotip">linkkou</vendor>
 
-    <!-- 插件版本 -->
-    <version>5.0.1</version>
+    <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
+    <version>5.0.2</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="212"/>
     <!-- 插件的描述 -->
@@ -35,6 +35,11 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.0.2</p>
+        <li>修复在新版本 IDE（2026.2 等）上右键菜单弹出时报 "Icon cannot be found in 'AllIcons.Actions.Menu_paste'" 导致菜单不可用的问题</li>
+        <li>Fixed "Icon cannot be found in 'AllIcons.Actions.Menu_paste'" which broke the project view context menu on recent IDEs (2026.2+)</li>
+      </ul>
        <ul>
         <p>5.0.0</p>
         <li>项目重构，支持更多菜单树样式设置</li>
@@ -129,7 +134,7 @@
 
     <actions>
         <!-- Add your actions here -->
-        <group id="StudyAction.MyGroup" text="Add Description" popup="true" icon="AllIcons.Actions.Menu_paste">
+        <group id="StudyAction.MyGroup" text="Add Description" popup="true" icon="AllIcons.Actions.MenuPaste">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="ReplaceInPath"/>
             <action id="FirstAction" class="com.plugins.infotip.action.ActionDescriptionText" text="Add Text Remarks"
                     description="添加备注信息"/>

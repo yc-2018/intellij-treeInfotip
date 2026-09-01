@@ -1,6 +1,5 @@
 package com.plugins.infotip.storage;
 
-import com.intellij.icons.AllIcons;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.fileTypes.LanguageFileType;
@@ -91,7 +90,7 @@ public class XmlFileUtils {
                 for (VirtualFile file : files) {
                     String presentableUrl = file.getCanonicalPath();
                     if (presentableUrl.length() < basePath.length()) {
-                        Messages.showMessageDialog(project, "Unable to get the root path of the file", "Can't Get Path", AllIcons.Actions.Menu_paste);
+                        Messages.showMessageDialog(project, "Unable to get the root path of the file", "Can't Get Path", Messages.getErrorIcon());
                         break;
                     }
                     String asBasePath = presentableUrl.substring(basePath.length(), presentableUrl.length());
@@ -131,7 +130,7 @@ public class XmlFileUtils {
                 }
             }
         } else {
-            Messages.showMessageDialog(project, "Unable to get the root path of the project", "Can't Get Path", AllIcons.Actions.Menu_paste);
+            Messages.showMessageDialog(project, "Unable to get the root path of the project", "Can't Get Path", Messages.getErrorIcon());
         }
     }
 

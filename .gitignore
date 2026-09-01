@@ -28,10 +28,12 @@ out
 gen
 build
 .gradle
-gradle
 ### Gradle template
 .gradle
 /build/
+
+# IntelliJ 插件开发沙箱（build.gradle 中 sandboxDir 指向仓库根目录）
+/idea-sandbox/
 
 # Ignore Gradle GUI config
 gradle-app.setting

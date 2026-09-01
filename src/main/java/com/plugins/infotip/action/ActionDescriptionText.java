@@ -1,6 +1,5 @@
 package com.plugins.infotip.action;
 
-import com.intellij.icons.AllIcons;
 import com.intellij.openapi.actionSystem.AnAction;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.project.Project;
@@ -29,7 +28,7 @@ public class ActionDescriptionText extends AnAction {
             @Override
             public void onModifyPath(List<Pair<String, String>> asBasePathOrExtension, List<XmlEntity> xmlEntities, XmlFile fileDirectoryXml, Project project) {
                 final XmlEntity xmlEntity = xmlEntities.get(0);
-                String txt = Messages.showInputDialog(project, "Input Your Description", "What Needs To Be Description?", AllIcons.Actions.Menu_paste, xmlEntity.getTitle(), null);
+                String txt = Messages.showInputDialog(project, "Input Your Description", "What Needs To Be Description?", Messages.getQuestionIcon(), xmlEntity.getTitle(), null);
                 if (null != txt) {
                     for (XmlEntity x : xmlEntities) {
                         XmlStorage.modify(project, fileDirectoryXml, x.setTitle(txt));
@@ -39,7 +38,7 @@ public class ActionDescriptionText extends AnAction {
 
             @Override
             public void onCreatePath(List<Pair<String, String>> asBasePathOrExtension, XmlFile fileDirectoryXml, Project project) {
-                String txt = Messages.showInputDialog(project, "Input Your Description", "What Needs To Be Description?", AllIcons.Actions.Menu_paste, "", null);
+                String txt = Messages.showInputDialog(project, "Input Your Description", "What Needs To Be Description?", Messages.getQuestionIcon(), "", null);
                 if (null != txt) {
                     for (Pair<String, String> pair : asBasePathOrExtension) {
                         XmlStorage.create(project, fileDirectoryXml, new XmlEntity().setPath(pair.getValue0()).setTitle(txt));
