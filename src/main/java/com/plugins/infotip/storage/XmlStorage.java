@@ -113,13 +113,13 @@ public class XmlStorage {
             } else {
                 WriteCommandAction.runWriteCommandAction(project, () -> {
                     childTag.setAttribute(PATH, xmlEntity.getPath());
-                    childTag.setAttribute(TITLE, xmlEntity.getTitle());
-                    childTag.setAttribute(EXTENSION, xmlEntity.getExtension());
-                    childTag.setAttribute(PRESENTABLE_TEXT, xmlEntity.getPresentableText());
-                    childTag.setAttribute(TOOLTIP_TITLE, xmlEntity.getTooltipTitle());
-                    childTag.setAttribute(ICON, xmlEntity.getIcon());
-                    childTag.setAttribute(TEXT_COLOR, xmlEntity.getTextColor());
-                    childTag.setAttribute(BACKGROUND_COLOR, xmlEntity.getBackgroundColor());
+                    setAttributeIfNotEmpty(childTag, TITLE, xmlEntity.getTitle());
+                    setAttributeIfNotEmpty(childTag, EXTENSION, xmlEntity.getExtension());
+                    setAttributeIfNotEmpty(childTag, PRESENTABLE_TEXT, xmlEntity.getPresentableText());
+                    setAttributeIfNotEmpty(childTag, TOOLTIP_TITLE, xmlEntity.getTooltipTitle());
+                    setAttributeIfNotEmpty(childTag, ICON, xmlEntity.getIcon());
+                    setAttributeIfNotEmpty(childTag, TEXT_COLOR, xmlEntity.getTextColor());
+                    setAttributeIfNotEmpty(childTag, BACKGROUND_COLOR, xmlEntity.getBackgroundColor());
                     //关闭时传 null，setAttribute 会把该属性移除，避免留下 strikethrough=""
                     childTag.setAttribute(STRIKETHROUGH, xmlEntity.isStrikethroughEnabled() ? "true" : null);
                     XmlFileUtils.saveFileXml(project);
@@ -175,13 +175,13 @@ public class XmlStorage {
             if (TREES.equals(rootTag.getName())) {
                 XmlTag childTag = rootTag.createChildTag(TREE, rootTag.getNamespace(), null, false);
                 childTag.setAttribute(PATH, xmlEntity.getPath());
-                childTag.setAttribute(TITLE, xmlEntity.getTitle());
-                childTag.setAttribute(EXTENSION, xmlEntity.getExtension());
-                childTag.setAttribute(PRESENTABLE_TEXT, xmlEntity.getPresentableText());
-                childTag.setAttribute(TOOLTIP_TITLE, xmlEntity.getTooltipTitle());
-                childTag.setAttribute(ICON, xmlEntity.getIcon());
-                childTag.setAttribute(TEXT_COLOR, xmlEntity.getTextColor());
-                childTag.setAttribute(BACKGROUND_COLOR, xmlEntity.getBackgroundColor());
+                setAttributeIfNotEmpty(childTag, TITLE, xmlEntity.getTitle());
+                setAttributeIfNotEmpty(childTag, EXTENSION, xmlEntity.getExtension());
+                setAttributeIfNotEmpty(childTag, PRESENTABLE_TEXT, xmlEntity.getPresentableText());
+                setAttributeIfNotEmpty(childTag, TOOLTIP_TITLE, xmlEntity.getTooltipTitle());
+                setAttributeIfNotEmpty(childTag, ICON, xmlEntity.getIcon());
+                setAttributeIfNotEmpty(childTag, TEXT_COLOR, xmlEntity.getTextColor());
+                setAttributeIfNotEmpty(childTag, BACKGROUND_COLOR, xmlEntity.getBackgroundColor());
                 if (xmlEntity.isStrikethroughEnabled()) {
                     childTag.setAttribute(STRIKETHROUGH, "true");
                 }
@@ -193,6 +193,17 @@ public class XmlStorage {
                     }
                 });
             }
+        }
+    }
+
+    /**
+     * 仅在值非空时设置属性，否则移除该属性
+     */
+    private static void setAttributeIfNotEmpty(XmlTag tag, String name, String value) {
+        if (value != null && !value.trim().isEmpty()) {
+            tag.setAttribute(name, value);
+        } else {
+            tag.setAttribute(name, null);
         }
     }
 

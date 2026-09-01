@@ -127,6 +127,8 @@
         <!-- Add your extensions here -->
         <toolWindow id="TreeInfotip" secondary="true" icon="AllIcons.General.Note" anchor="right"
                     factoryClass="com.plugins.infotip.gui.view.NoteTreeView"/>
+        <toolWindow id="XmlEditor" secondary="true" icon="AllIcons.FileTypes.Xml" anchor="bottom"
+                    factoryClass="com.plugins.infotip.gui.view.XmlEditorToolWindow"/>
         <postStartupActivity implementation="com.plugins.infotip.PluginStartupActivity"/>
         <treeStructureProvider implementation="com.plugins.infotip.TreeOnlyTextProvider"/>
         <projectViewNodeDecorator implementation="com.plugins.infotip.IgnoreViewNodeDecorator"/>
