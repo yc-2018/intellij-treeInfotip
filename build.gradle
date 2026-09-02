@@ -11,6 +11,10 @@ buildscript {
 
 plugins {
     id 'java'
+    // Kotlin/Java 混编：新代码可以直接写 .kt，老的 .java 不用动。
+    // 版本必须 <= 最低支持 IDE 自带的 Kotlin（2022.3 是 1.7.21 / 1.8.x），
+    // 因为运行时用的是 IDE 里那份 kotlin-stdlib，不是我们打包的。
+    id 'org.jetbrains.kotlin.jvm' version '1.8.10'
     id 'org.jetbrains.intellij' version '1.13.2'
     // Gradle Changelog Plugin
     id 'org.jetbrains.changelog' version "1.3.1"
@@ -38,6 +42,10 @@ dependencies {
     implementation 'org.javatuples:javatuples:1.2'
     compileOnly 'org.jetbrains:annotations:24.0.1'
     annotationProcessor 'org.projectlombok:lombok:1.18.26'
+    // 只在编译期需要：运行时用 IDE 自带的 kotlin-stdlib，
+    // 配合 gradle.properties 里的 kotlin.stdlib.default.dependency=false，
+    // 避免插件里塞一份 stdlib 和 IDE 的那份打架。
+    compileOnly 'org.jetbrains.kotlin:kotlin-stdlib:1.8.10'
 }
 
 java {
@@ -50,6 +58,21 @@ java {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+}
+
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    kotlinOptions {
+        // 和 java 块的 targetCompatibility 保持一致，否则混编时 javac 报版本不匹配
+        jvmTarget = "17"
+        // since-build=223 覆盖到 2022.3.0，那个版本自带的 Kotlin 是 1.7.21。
+        // 压到 1.7 是为了让编译器拦住只有新 stdlib 才有的函数，
+        // 否则要到用户的老 IDE 上才会炸 NoSuchMethodError。
+        // apiVersion / languageVersion 只认两段式。verifyPluginConfiguration 会提示
+        // "requires apiVersion=1.7.0"，那是它按字符串比对的误报——真填 1.7.0，
+        // Kotlin 编译器直接报 "Unknown Kotlin version: 1.7.0"。这条告警可以忽略。
+        apiVersion = "1.7"
+        languageVersion = "1.7"
+    }
 }
 
 /*https://plugins.jetbrains.com/docs/intellij/build-number-ranges.html#intellij-platform-based-products-of-recent-ide-versions*/

@@ -4,7 +4,7 @@
     <vendor email="chinacclk@gmail.com" url="https://github.com/Link-Kou/intellij-treeInfotip">linkkou</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.1.0</version>
+    <version>5.1.1</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -35,6 +35,15 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.1.1</p>
+        <li>引入 Kotlin/Java 混编，颜色转换、图标列表等内部工具类改用 Kotlin 重写，插件不额外打包 kotlin-stdlib</li>
+        <li>颜色字符串解析遇到非法数字时返回空值而不再抛异常，配置文件手写错误不会再中断渲染</li>
+        <li>图标列表初始化改为兜住 Error：新版 IDE 若删改 AllIcons 字段，最坏只是"没有图标可选"，不会导致插件加载失败</li>
+        <li>Added Kotlin/Java mixed compilation; internal utilities are now written in Kotlin without bundling kotlin-stdlib</li>
+        <li>Malformed color strings now degrade to no-op instead of throwing, so a hand-edited config can no longer break rendering</li>
+        <li>Icon list initialization now also catches Errors, so AllIcons changes in newer IDEs can no longer fail plugin loading</li>
+      </ul>
        <ul>
         <p>5.1.0</p>
         <li>字节码目标从 Java 8 提升到 Java 17，与编译平台 2022.3 对齐</li>

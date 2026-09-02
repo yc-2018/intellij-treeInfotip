@@ -18,6 +18,7 @@ JAVA_HOME="D:/green/jdks/jdk-17.0.8" /d/green/Gradle/dists/gradle-7.6.4/bin/grad
 
 - `--offline` 是必要的：联网时 gradle-intellij-plugin 会去 GitHub 查最新版本，国内网络下抛 `getHeaderField("Location") must not be null`（不致命，但很吵）。
 - 必须用 JDK 17，gradle-intellij-plugin 1.13.2 + 平台 2022.3 在 JDK 8 上跑不起来。
+- **换机器或清了缓存后，`--offline` 会先失败一次**：Kotlin 编译器自己的 classpath（`kotlin-gradle-plugin`、`kotlin-script-runtime` 等）不在缓存里就没法离线解析。去掉 `--offline` 跑一次 `compileJava` 把它们拉下来（首次约 4 分钟），之后就一直能离线。本机 `GRADLE_USER_HOME` 是 `D:\green\Gradle\repository`，不是默认的 `~/.gradle`。
 
 常用任务：
 
@@ -33,7 +34,18 @@ JAVA_HOME="D:/green/jdks/jdk-17.0.8" /d/green/Gradle/dists/gradle-7.6.4/bin/grad
 
 改完代码**必须 `runIde` 实测**。`plugin.xml` 里 action 注册写错、或者引用了新版本已删除的 `AllIcons` 字段，都是启动期抛异常（历史事故：`AllIcons.Actions.Menu_paste` 在 2026.2 被移除，右键菜单整个不可用）。编译通过说明不了任何问题；另外目录树只在**重绘时**才会应用新样式。
 
-## 版本与发布规则
+## 源码布局与 Kotlin 混编
+
+主体是 Java（`src/main/java`），5.1.1 起额外开了 `src/main/kotlin`，两边可以互相调用，`compileKotlin` 先跑、`compileJava` 后跑。**老的 `.java` 不需要动**，新代码想写 Kotlin 就直接写。
+
+已经是 Kotlin 的：`gui/ColorsUtils.kt`、`gui/IconsUtils.kt`、`gui/entity/IconEntity.kt`（都是没有 Lombok、没有 Swing 继承的叶子类）。
+
+混编的硬约束：
+
+- **绝对不能把 kotlin-stdlib 打进插件**。IDE 自带一份，重复会冲突。靠两条配合实现：`gradle.properties` 里 `kotlin.stdlib.default.dependency=false`，`build.gradle` 里 stdlib 写成 `compileOnly`。打包后 `TreeInfotip/lib/` 下只应该有插件 jar、`javatuples`、`searchableOptions` 三个，出现 `kotlin-stdlib-*.jar` 就是配置漏了。
+- **Kotlin 语言版本要压到最低支持 IDE 那一档**。`since-build=223` 对应 2022.3.0，它自带 Kotlin 1.7.21，所以 `apiVersion`/`languageVersion` 都锁 `"1.7"`。不锁的话用到新 stdlib 才有的函数编译期不报错，要到用户的老 IDE 上炸 `NoSuchMethodError`。
+- Java 要调 Kotlin，签名得手动配：`object` 里的函数加 `@JvmStatic`，字段加 `@JvmField`，**被 Java `switch` case 标签用到的常量必须是 `const val`**（`ColorsUtils.COLOR_TEXT_COLOR_NAME` 就是，写成 `@JvmField val` 直接编译不过）。
+
 
 **只要改动了功能代码，就必须升一个新版本、本地打包、推送远端仓库。** 纯文档、注释、CI 配置的改动不需要升版本。
 
@@ -109,3 +121,5 @@ PresentationData：图标 / locationString / tooltip / presentableText / 文字�
 - `ContentFactory.SERVICE.getInstance()` 已废弃（`NoteTreeView`、`XmlEditorToolWindow` 各一处），为向下兼容刻意保留，编译告警可以忽略。
 - 图标下拉框没有「不设置」选项（`IconsUtils.ICONS` 纯反射 `AllIcons` 生成），所以颜色/图标对话框一点确定就必然写入一个 `icon` 属性。这是既有行为。
 - `XmlEditorToolWindow` 的「抽离路径前缀」还是空的 TODO；「格式化」和「清理空属性」是正则实现，属性值里出现 `<` / `>` 时不安全。
+- `verifyPluginConfiguration` 会报 "The Kotlin configuration specifies apiVersion=1.7 but since-build='223' property requires apiVersion=1.7.0"，这是它按字符串比对的**误报**：真填 `1.7.0`，Kotlin 编译器直接报 `Unknown Kotlin version: 1.7.0`。这条告警忽略即可，`build.gradle` 里也写了注释。
+- `XmlEntity` 是全项目唯一用 Lombok 的类（`@Data @Accessors(chain = true)`），**不要顺手改成 Kotlin**：Kotlin 的 `var` 生成 void setter，和同名的链式 `setXxx(): XmlEntity` 是 platform declaration clash，没法共存。要么照抄链式 setter（比 Lombok 还长），要么改掉 14 处调用点（`ActionDescriptionExtension` 和 `XmlStorage` 里都有一长串链式调用）。所以 Lombok 目前拿不掉。
