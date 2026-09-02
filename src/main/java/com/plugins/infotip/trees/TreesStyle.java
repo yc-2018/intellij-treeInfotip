@@ -7,8 +7,8 @@ import com.intellij.ui.SimpleTextAttributes;
 import com.plugins.infotip.gui.IconsUtils;
 import com.plugins.infotip.storage.XmlEntity;
 import com.plugins.infotip.gui.ColorsUtils;
-import com.plugins.infotip.gui.entity.IconEntity;
 
+import javax.swing.*;
 import java.awt.*;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -63,11 +63,10 @@ public class TreesStyle {
             //presentation.clear();
             return;
         }
-        //设置图标
-        for (IconEntity allIcon : IconsUtils.getAllIcons()) {
-            if (allIcon.getName().equals(xmlEntity.getIcon())) {
-                presentation.setIcon(allIcon.getIcon());
-            }
+        //设置图标:AllIcons 里有一批图标长边大于 16,直接用会把树的行高撑起来,统一缩过再设
+        final Icon icon = IconsUtils.findFitIcon(xmlEntity.getIcon());
+        if (null != icon) {
+            presentation.setIcon(icon);
         }
         //设置锚定文本
         presentation.setLocationString(xmlEntity.getTitle());

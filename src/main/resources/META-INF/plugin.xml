@@ -4,7 +4,7 @@
     <vendor email="chinacclk@gmail.com" url="https://github.com/Link-Kou/intellij-treeInfotip">linkkou</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.1.1</version>
+    <version>5.1.2</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -35,6 +35,13 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.1.2</p>
+        <li>修复部分图标设置后把目录树行高撑高的问题：可选图标里有 50 个长边超过 16（20×20、24×24、32×32、最大 48×48），现在会等比缩到一行的高度，小图标保持原样不放大</li>
+        <li>颜色/图标对话框的下拉框预览同步缩放，选的时候看到的大小就是设上去的大小</li>
+        <li>Fixed oversized icons inflating the tree row height: 50 of the selectable icons have a long edge above 16 (20×20, 24×24, 32×32, up to 48×48) and are now scaled down to fit a single row, while smaller icons are left untouched</li>
+        <li>The icon dropdown preview is scaled the same way, so the size you pick is the size you get</li>
+      </ul>
        <ul>
         <p>5.1.1</p>
         <li>引入 Kotlin/Java 混编，颜色转换、图标列表等内部工具类改用 Kotlin 重写，插件不额外打包 kotlin-stdlib</li>
