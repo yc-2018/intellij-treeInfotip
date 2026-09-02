@@ -6,7 +6,7 @@
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.2.0</version>
+    <version>5.3.0</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -46,6 +46,19 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.3.0</p>
+        <li>修复在 2024.1 及更新的 IDE（含 2026.x）上双击备注列表跳转时崩溃：报错是「Read access is allowed from inside read-action only」，新版平台的 EDT 不再隐式持有读锁，PSI 查找现在包在 ReadAction 里</li>
+        <li>备注列表加上滚动条，条目超过窗口高度时不再只能看到前面几条</li>
+        <li>备注列表检查配置的路径是否还存在，已被删除或改名的整行标红并标注「路径已失效」</li>
+        <li>备注前面加上类型图标：目录是文件夹图标，文件按文件类型显示，按扩展名批量设置的规则显示对应类型的图标，路径失效的显示错误图标</li>
+        <li>双击备注列表的根节点可以重新检查所有路径（在 IDE 外面删文件不会触发自动刷新）</li>
+        <li>Fixed a crash when double-clicking an entry in the note list on 2024.1+ IDEs including 2026.x ("Read access is allowed from inside read-action only"): the EDT no longer holds an implicit read lock, so PSI lookups are now wrapped in a ReadAction</li>
+        <li>The note list is scrollable now, so entries below the tool window height are reachable</li>
+        <li>The note list checks whether each configured path still exists and paints deleted or renamed ones red with a "路径已失效" marker</li>
+        <li>Type icons in front of each note: a folder icon for directories, the file type icon for files and for extension rules, an error icon for dead paths</li>
+        <li>Double-clicking the note list root re-checks every path, since deleting files outside the IDE triggers no refresh</li>
+      </ul>
        <ul>
         <p>5.2.0</p>
         <li>插件改用独立身份发布：id 换成 com.github.yc556.treeinfotip，名称改为「TreeInfotip 目录树备注」，与原版并存不再互相顶掉更新</li>
