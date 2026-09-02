@@ -41,8 +41,11 @@ dependencies {
 }
 
 java {
-    sourceCompatibility = "1.8"
-    targetCompatibility = "1.8"
+    // 与 platformVersion(2022.3.2)对齐：2022.3 起所有 IntelliJ 系 IDE 都要求 JDK 17 才能启动，
+    // 因此字节码可以直接出 17，不必再迁就 Java 8。不要再往上提到 21，
+    // 2022.3 自带的 JBR 是 17，21 的字节码在沙箱和用户机器上都加载不了。
+    sourceCompatibility = "17"
+    targetCompatibility = "17"
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -60,7 +63,7 @@ intellij {
     type = project.property('platformType').toString()
     // 依赖的插件
     //plugins = ['DatabaseTools', 'Velocity']
-    // 保持 plugin.xml 中的 since-build="212" 且不写入 until-build，
+    // 保持 plugin.xml 中的 since-build="223" 且不写入 until-build，
     // 否则会给插件加上兼容性上限，导致新版本 IDE 无法安装。
     updateSinceUntilBuild = false
     downloadSources = false

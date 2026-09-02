@@ -4,9 +4,9 @@
     <vendor email="chinacclk@gmail.com" url="https://github.com/Link-Kou/intellij-treeInfotip">linkkou</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.0.4</version>
+    <version>5.1.0</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
-    <idea-version since-build="212"/>
+    <idea-version since-build="223"/>
     <!-- 插件的描述 -->
     <description><![CDATA[
       <p><b>TreeInfotip plugin for IntelliJ IDEs.</b></p>
@@ -35,6 +35,13 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.1.0</p>
+        <li>字节码目标从 Java 8 提升到 Java 17，与编译平台 2022.3 对齐</li>
+        <li>最低支持版本随之从 2021.2（since-build 212）提高到 2022.3（since-build 223）；2022.2 及更早的 IDE 请继续使用 5.0.4</li>
+        <li>Raised the bytecode target from Java 8 to Java 17 to match the 2022.3 build platform</li>
+        <li>Minimum supported IDE is now 2022.3 (since-build 223) instead of 2021.2; stay on 5.0.4 for 2022.2 and earlier</li>
+      </ul>
        <ul>
         <p>5.0.4</p>
         <li>新增「按扩展名批量设置」菜单：一条规则命中一批同扩展名的文件，范围可限定为当前目录（含子目录）或整个项目</li>
