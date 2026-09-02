@@ -120,6 +120,8 @@ PresentationData：图标 / locationString / tooltip / presentableText / 文字�
 - `sourceCompatibility = targetCompatibility = 17`。**不要提到 21**：`platformVersion=2022.3.2` 自带的 JBR 是 17，21 的字节码在 `runIde` 沙箱和用户机器上都加载不了；真要上 21 得先把 `platformVersion` 拉到 2025.x，那会一并撞上 `ContentFactory.SERVICE` 这类已标记删除的 API。
 - `ContentFactory.SERVICE.getInstance()` 已废弃（`NoteTreeView`、`XmlEditorToolWindow` 各一处），为向下兼容刻意保留，编译告警可以忽略。
 - 图标下拉框没有「不设置」选项（`IconsUtils.ICONS` 纯反射 `AllIcons` 生成），所以颜色/图标对话框一点确定就必然写入一个 `icon` 属性。这是既有行为。
+- **量图标尺寸不能用裸 JVM 反射 `getIconWidth()`**。没有 `Application` 时 `CachedImageIcon` 加载不了真图，会退化成 16×16 的空图标，量出来「全都是 16×16」，看着像没问题其实什么都没量到。要量真实尺寸就直接读平台 jar 里 SVG 根标签声明的 `width` / `height`（2022.3 共 5894 张去重 SVG，其中 1221 张不是 16×16；`AllIcons` 暴露的 1080 个字段里有 50 个长边超过 16，最大 48×48）。要验缩放逻辑就自己造假 `Icon`（只重写 `getIconWidth` / `getIconHeight`）去打 `IconsUtils.fit`，不依赖 `Application`。
+- 缩图标别用 `IconUtil.resizeSquared`：它的比例**只按宽算**（`IconUtil$4.paintIcon` 里 `ratio = size / source.getIconWidth()`），`AllIcons` 里有 `2×19`、`32×15`、`18×22` 这类非正方形的，按宽算会把 `2×19` 放大成 `16×152`。要按 `max(宽, 高)` 自己算倍率交给 `IconUtil.scale(icon, null, factor)`（`OBJ_SCALE` 相对倍率，平台会叠在 DPI 缩放之上）。
 - `XmlEditorToolWindow` 的「抽离路径前缀」还是空的 TODO；「格式化」和「清理空属性」是正则实现，属性值里出现 `<` / `>` 时不安全。
 - `verifyPluginConfiguration` 会报 "The Kotlin configuration specifies apiVersion=1.7 but since-build='223' property requires apiVersion=1.7.0"，这是它按字符串比对的**误报**：真填 `1.7.0`，Kotlin 编译器直接报 `Unknown Kotlin version: 1.7.0`。这条告警忽略即可，`build.gradle` 里也写了注释。
 - `XmlEntity` 是全项目唯一用 Lombok 的类（`@Data @Accessors(chain = true)`），**不要顺手改成 Kotlin**：Kotlin 的 `var` 生成 void setter，和同名的链式 `setXxx(): XmlEntity` 是 platform declaration clash，没法共存。要么照抄链式 setter（比 Lombok 还长），要么改掉 14 处调用点（`ActionDescriptionExtension` 和 `XmlStorage` 里都有一长串链式调用）。所以 Lombok 目前拿不掉。
