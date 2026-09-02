@@ -30,39 +30,88 @@ public class TreesUtils {
 
     /**
      * 匹配路径
+     * <p>
+     * 支持两类规则，优先级从高到低：
+     * <ol>
+     *     <li>路径规则 —— 只写 path，路径全等时命中，比任何扩展名规则都优先；</li>
+     *     <li>目录级类型规则 —— path + extension，命中该目录（含各级子目录）下的同扩展名文件，
+     *     多条同时命中时 path 更长（更靠里）的那条生效；</li>
+     *     <li>全项目类型规则 —— 只写 extension，命中整个项目里的同扩展名文件。</li>
+     * </ol>
+     * 扩展名规则只作用于文件，目录节点不参与匹配。
+     * </p>
      *
      * @param virtualFile 文件对象
-     * @return boolean
+     * @return 命中的规则，没有则返回 null
      */
     public static XmlEntity getMatchPath(VirtualFile virtualFile, Project project) {
-        List<XmlEntity> xml = XmlStorage.getXmlEntity(project);
-        if (null != xml && null != virtualFile) {
-            for (XmlEntity listTreeInfo : xml) {
-                if (listTreeInfo != null) {
-                    try {
-                        String basePath = project.getPresentableUrl();
-                        String canonicalPath = virtualFile.getCanonicalPath();
-                        if (null != basePath && null != canonicalPath) {
-                            int beginIndex = basePath.length();
-                            int endIndex = canonicalPath.length();
-                            if (beginIndex <= endIndex) {
-                                String subBasePath = canonicalPath.substring(beginIndex, endIndex);
-                                if (subBasePath.equals(listTreeInfo.getPath())) {
-                                    return listTreeInfo;
-                                }
-                            }
-                        }
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
+        final List<XmlEntity> xml = XmlStorage.getXmlEntity(project);
+        if (null == xml || null == virtualFile || null == project) {
+            return null;
+        }
+        final String basePath = project.getPresentableUrl();
+        final String canonicalPath = virtualFile.getCanonicalPath();
+        if (null == basePath || null == canonicalPath || canonicalPath.length() < basePath.length()) {
+            return null;
+        }
+        final String relativePath = canonicalPath.substring(basePath.length());
+        final String fileExtension = virtualFile.isDirectory() ? null : virtualFile.getExtension();
+        XmlEntity extensionMatch = null;
+        //已命中扩展名规则的限定目录长度：越长表示范围越具体，-1 表示还没命中过
+        int matchedScopeLength = -1;
+        for (XmlEntity listTreeInfo : xml) {
+            if (null == listTreeInfo) {
+                continue;
+            }
+            final String rulePath = trimTrailingSlash(listTreeInfo.getPath());
+            final String ruleExtension = listTreeInfo.getExtension();
+            if (!isNotEmpty(ruleExtension)) {
+                //路径规则：全等即命中，优先级最高，直接返回
+                if (isNotEmpty(rulePath) && rulePath.equals(relativePath)) {
+                    return listTreeInfo;
                 }
+                continue;
+            }
+            if (null == fileExtension || !ruleExtension.trim().equalsIgnoreCase(fileExtension)) {
+                continue;
+            }
+            if (isNotEmpty(rulePath)) {
+                //目录级：文件要落在这个目录之下
+                if (relativePath.startsWith(rulePath + "/") && rulePath.length() > matchedScopeLength) {
+                    matchedScopeLength = rulePath.length();
+                    extensionMatch = listTreeInfo;
+                }
+            } else if (matchedScopeLength < 0) {
+                //全项目：范围最宽，只在没有目录级规则命中时兜底
+                matchedScopeLength = 0;
+                extensionMatch = listTreeInfo;
             }
         }
-        return null;
+        return extensionMatch;
+    }
+
+    private static boolean isNotEmpty(String value) {
+        return null != value && !value.trim().isEmpty();
+    }
+
+    /**
+     * 去掉手写路径末尾多余的斜杠，否则 /src/ 拼出来的 /src// 永远匹配不上。
+     * 只写 "/" 的等于项目根目录，归一成空串后按「整个项目」处理。
+     */
+    private static String trimTrailingSlash(String path) {
+        if (null == path) {
+            return null;
+        }
+        String result = path.trim();
+        while (result.endsWith("/")) {
+            result = result.substring(0, result.length() - 1);
+        }
+        return result;
     }
 
     public static void Navigation(Project project, String path) {
-        if (project != null) {
+        //类型规则没有 path，跳转不到具体文件，直接忽略
+        if (project != null && isNotEmpty(path)) {
             final ProjectViewImpl instance = (ProjectViewImpl) ProjectView.getInstance(project);
             final VirtualFile file = VfsUtil.findFile(new File(project.getBasePath() + path).toPath(), false);
             if (null != file) {

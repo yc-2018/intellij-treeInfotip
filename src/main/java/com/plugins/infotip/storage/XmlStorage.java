@@ -112,7 +112,7 @@ public class XmlStorage {
                 create(project, fileDirectoryXml, xmlEntity);
             } else {
                 WriteCommandAction.runWriteCommandAction(project, () -> {
-                    childTag.setAttribute(PATH, xmlEntity.getPath());
+                    setAttributeIfNotEmpty(childTag, PATH, xmlEntity.getPath());
                     setAttributeIfNotEmpty(childTag, TITLE, xmlEntity.getTitle());
                     setAttributeIfNotEmpty(childTag, EXTENSION, xmlEntity.getExtension());
                     setAttributeIfNotEmpty(childTag, PRESENTABLE_TEXT, xmlEntity.getPresentableText());
@@ -120,8 +120,7 @@ public class XmlStorage {
                     setAttributeIfNotEmpty(childTag, ICON, xmlEntity.getIcon());
                     setAttributeIfNotEmpty(childTag, TEXT_COLOR, xmlEntity.getTextColor());
                     setAttributeIfNotEmpty(childTag, BACKGROUND_COLOR, xmlEntity.getBackgroundColor());
-                    //关闭时传 null，setAttribute 会把该属性移除，避免留下 strikethrough=""
-                    childTag.setAttribute(STRIKETHROUGH, xmlEntity.isStrikethroughEnabled() ? "true" : null);
+                    setAttributeIfNotEmpty(childTag, STRIKETHROUGH, xmlEntity.isStrikethroughEnabled() ? "true" : null);
                     XmlFileUtils.saveFileXml(project);
                 });
             }
@@ -144,7 +143,9 @@ public class XmlStorage {
                     if (TREE.equals(tag.getName())) {
                         XmlEntity tree = tree(tag);
                         if (null != tree) {
-                            if (xmlEntity.getPath().equals(tree.getPath())) {
+                            //类型规则的 path 可能为空，要连 extension 一起比，才不会误删同目录的其他规则
+                            if (trimToEmpty(xmlEntity.getPath()).equals(trimToEmpty(tree.getPath()))
+                                    && trimToEmpty(xmlEntity.getExtension()).equals(trimToEmpty(tree.getExtension()))) {
                                 WriteCommandAction.runWriteCommandAction(project, () -> {
                                     tag.delete();
                                     XmlFileUtils.saveFileXml(project);
@@ -174,7 +175,7 @@ public class XmlStorage {
         if (null != rootTag) {
             if (TREES.equals(rootTag.getName())) {
                 XmlTag childTag = rootTag.createChildTag(TREE, rootTag.getNamespace(), null, false);
-                childTag.setAttribute(PATH, xmlEntity.getPath());
+                setAttributeIfNotEmpty(childTag, PATH, xmlEntity.getPath());
                 setAttributeIfNotEmpty(childTag, TITLE, xmlEntity.getTitle());
                 setAttributeIfNotEmpty(childTag, EXTENSION, xmlEntity.getExtension());
                 setAttributeIfNotEmpty(childTag, PRESENTABLE_TEXT, xmlEntity.getPresentableText());
@@ -182,9 +183,7 @@ public class XmlStorage {
                 setAttributeIfNotEmpty(childTag, ICON, xmlEntity.getIcon());
                 setAttributeIfNotEmpty(childTag, TEXT_COLOR, xmlEntity.getTextColor());
                 setAttributeIfNotEmpty(childTag, BACKGROUND_COLOR, xmlEntity.getBackgroundColor());
-                if (xmlEntity.isStrikethroughEnabled()) {
-                    childTag.setAttribute(STRIKETHROUGH, "true");
-                }
+                setAttributeIfNotEmpty(childTag, STRIKETHROUGH, xmlEntity.isStrikethroughEnabled() ? "true" : null);
                 WriteCommandAction.runWriteCommandAction(project, new Runnable() {
                     @Override
                     public void run() {
@@ -197,12 +196,17 @@ public class XmlStorage {
     }
 
     /**
-     * 仅在值非空时设置属性，否则移除该属性
+     * 写入属性：值非空时写入，为空时把已存在的属性删掉。
+     * <p>
+     * {@link #tree(XmlTag)} 解析时会把缺失的属性归一化成 ""，若直接回写就会在文件里留下
+     * extension=""、icon="" 这类无意义的空属性，因此写入前统一在这里过滤一次。
+     * </p>
      */
     private static void setAttributeIfNotEmpty(XmlTag tag, String name, String value) {
         if (value != null && !value.trim().isEmpty()) {
             tag.setAttribute(name, value);
-        } else {
+        } else if (null != tag.getAttribute(name)) {
+            //传 null 会移除该属性；仅在属性确实存在时调用，新建标签时不做无用操作
             tag.setAttribute(name, null);
         }
     }
@@ -218,11 +222,16 @@ public class XmlStorage {
         XmlAttribute xml_text_color = tag.getAttribute(TEXT_COLOR);
         XmlAttribute xml_background_color = tag.getAttribute(BACKGROUND_COLOR);
         XmlAttribute xml_strikethrough = tag.getAttribute(STRIKETHROUGH);
-        if (xml_path != null) {
-            xmlEntity.setPath(xml_path.getValue()).setTitle(xml_title == null ? "" : xml_title.getValue()).setExtension(xml_extension == null ? "" : xml_extension.getValue()).setPresentableText(xml_presentable_text == null ? "" : xml_presentable_text.getValue()).setTooltipTitle(xml_tooltip_title == null ? "" : xml_tooltip_title.getValue()).setIcon(xml_icons == null ? "" : xml_icons.getValue()).setTextColor(xml_text_color == null ? "" : xml_text_color.getValue()).setBackgroundColor(xml_background_color == null ? "" : xml_background_color.getValue()).setStrikethrough(xml_strikethrough == null ? null : xml_strikethrough.getValue()).setTag(tag);
+        //只写 extension 的是「全项目按类型」规则，没有 path 也算有效
+        if (xml_path != null || xml_extension != null) {
+            xmlEntity.setPath(xml_path == null ? null : xml_path.getValue()).setTitle(xml_title == null ? "" : xml_title.getValue()).setExtension(xml_extension == null ? "" : xml_extension.getValue()).setPresentableText(xml_presentable_text == null ? "" : xml_presentable_text.getValue()).setTooltipTitle(xml_tooltip_title == null ? "" : xml_tooltip_title.getValue()).setIcon(xml_icons == null ? "" : xml_icons.getValue()).setTextColor(xml_text_color == null ? "" : xml_text_color.getValue()).setBackgroundColor(xml_background_color == null ? "" : xml_background_color.getValue()).setStrikethrough(xml_strikethrough == null ? null : xml_strikethrough.getValue()).setTag(tag);
             return xmlEntity;
         }
         return null;
+    }
+
+    private static String trimToEmpty(String value) {
+        return null == value ? "" : value.trim();
     }
 
 }

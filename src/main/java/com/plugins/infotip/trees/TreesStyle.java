@@ -71,10 +71,20 @@ public class TreesStyle {
         }
         //设置锚定文本
         presentation.setLocationString(xmlEntity.getTitle());
+        //设置悬浮提示
+        if (isNotEmpty(xmlEntity.getTooltipTitle())) {
+            presentation.setTooltip(xmlEntity.getTooltipTitle());
+        }
+        //覆盖节点显示名,为空时沿用节点原本的名称
+        final boolean hasPresentableText = isNotEmpty(xmlEntity.getPresentableText());
+        final String displayName = hasPresentableText ? xmlEntity.getPresentableText() : name;
+        if (hasPresentableText) {
+            presentation.setPresentableText(displayName);
+        }
         final Color backgroundColor = ColorsUtils.toColor(xmlEntity.getBackgroundColor());
         final Color textColor = ColorsUtils.toColor(xmlEntity.getTextColor());
         final boolean strikethrough = xmlEntity.isStrikethroughEnabled();
-        if (null != textColor || strikethrough) {
+        if (null != textColor || strikethrough || hasPresentableText) {
             //设置文本颜色与删除线,两者互不依赖且可叠加:
             //只设颜色时用 PLAIN + textColor;只设删除线时用 STRIKEOUT + null(沿用主题前景色);
             //两者都设时用 STRIKEOUT + textColor。
@@ -82,7 +92,7 @@ public class TreesStyle {
                     ? SimpleTextAttributes.STYLE_STRIKEOUT
                     : SimpleTextAttributes.STYLE_PLAIN;
             presentation.clearText();
-            presentation.addText(name, new SimpleTextAttributes(style, textColor));
+            presentation.addText(displayName, new SimpleTextAttributes(style, textColor));
         }
         if (null != backgroundColor) {
             //设置背景色
@@ -92,9 +102,9 @@ public class TreesStyle {
             final Callback value = objectCallbackEntry.getValue();
             value.change();
         }
-        //设置节点本身文本
-        //presentation.setPresentableText(matchPath.getTitle());
-        //设置提示
-        //presentation.setTooltip(matchPath.getTitle());
+    }
+
+    private static boolean isNotEmpty(String value) {
+        return null != value && !value.trim().isEmpty();
     }
 }

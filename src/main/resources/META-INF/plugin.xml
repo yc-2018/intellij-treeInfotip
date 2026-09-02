@@ -4,7 +4,7 @@
     <vendor email="chinacclk@gmail.com" url="https://github.com/Link-Kou/intellij-treeInfotip">linkkou</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.0.2</version>
+    <version>5.0.4</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="212"/>
     <!-- 插件的描述 -->
@@ -35,6 +35,20 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.0.4</p>
+        <li>新增「按扩展名批量设置」菜单：一条规则命中一批同扩展名的文件，范围可限定为当前目录（含子目录）或整个项目</li>
+        <li>新增「覆盖显示名称」菜单：用自定义名称替换节点显示的文件名，留空恢复原名</li>
+        <li>新增「设置悬浮提示」菜单：自定义鼠标悬停在节点上时显示的内容</li>
+        <li>新增 XML 编辑工具窗口，可直接查看与编辑配置文件</li>
+        <li>右键菜单全面中文化，新增「添加/取消删除线」</li>
+        <li>保存配置时自动清理空属性，配置文件更干净</li>
+        <li>Added "batch by file extension" rule: one rule matches all files with the same extension, scoped to the current directory (including subdirectories) or the whole project</li>
+        <li>Added "override display name" and "custom tooltip" menu entries</li>
+        <li>Added an XML editor tool window for viewing and editing the configuration file</li>
+        <li>Localized the context menu into Chinese and added strikethrough support</li>
+        <li>Empty attributes are now dropped when saving the configuration</li>
+      </ul>
        <ul>
         <p>5.0.2</p>
         <li>修复在新版本 IDE（2026.2 等）上右键菜单弹出时报 "Icon cannot be found in 'AllIcons.Actions.Menu_paste'" 导致菜单不可用的问题</li>
@@ -140,12 +154,22 @@
             <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="ReplaceInPath"/>
             <action id="FirstAction" class="com.plugins.infotip.action.ActionDescriptionText" text="添加文字备注"
                     description="给选中的文件或目录添加备注信息"/>
+            <action id="FirstAction4" class="com.plugins.infotip.action.ActionDescriptionPresentableText"
+                    text="覆盖显示名称"
+                    description="用自定义名称替换节点显示的文件名,留空则恢复原名"/>
+            <action id="FirstAction6" class="com.plugins.infotip.action.ActionDescriptionTooltip"
+                    text="设置悬浮提示"
+                    description="设置鼠标悬停在节点上时显示的提示内容"/>
             <action id="FirstAction2" class="com.plugins.infotip.action.ActionDescriptionColorOrIcon"
                     text="添加颜色或图标"
                     description="给选中的文件或目录设置图标、文字颜色与背景色"/>
             <action id="FirstAction3" class="com.plugins.infotip.action.ActionDescriptionStrikethrough"
                     text="添加/取消删除线"
                     description="给选中的文件或目录名称添加或取消删除线"/>
+            <separator/>
+            <action id="FirstAction7" class="com.plugins.infotip.action.ActionDescriptionExtension"
+                    text="按扩展名批量设置"
+                    description="一条规则命中一批同扩展名的文件,范围可限定为当前目录或整个项目"/>
             <separator/>
             <action id="FirstAction5" class="com.plugins.infotip.action.ActionDescriptionClearAll" text="清除全部设置"
                     description="清理选中节点的全部备注与样式设置"/>

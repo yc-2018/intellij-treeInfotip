@@ -115,7 +115,7 @@ public class XmlFileUtils {
                             for (Pair<String, String> pair : pathInfo) {
                                 boolean find = false;
                                 for (XmlEntity x : xmlEntitys) {
-                                    if (pair.getValue0().equals(x.getPath())) {
+                                    if (isPathRule(x) && pair.getValue0().equals(x.getPath())) {
                                         find = true;
                                         newXmlEntity.add(x);
                                     }
@@ -136,6 +136,18 @@ public class XmlFileUtils {
 
     public static void ListenerSave(Object id, SaveCallback callback) {
         callbackList.put(id, callback);
+    }
+
+    /**
+     * 是否为「路径规则」，即只绑定单个文件或目录的那种。
+     * <p>
+     * 带 extension 的是「类型规则」，一条会命中一批同扩展名的文件。针对单个节点的菜单
+     * 不能顺手把它改掉，否则改一个文件的备注会连带影响整批文件，所以匹配时要排除。
+     * </p>
+     */
+    private static boolean isPathRule(XmlEntity xmlEntity) {
+        final String extension = xmlEntity.getExtension();
+        return null == extension || extension.trim().isEmpty();
     }
 
     /**

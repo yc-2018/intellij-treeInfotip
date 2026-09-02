@@ -49,7 +49,7 @@ public class NoteTreeView extends Tree implements ToolWindowFactory {
             final List<XmlEntity> xmlEntity = XmlStorage.getXmlEntity(project);
             if (null != xmlEntity) {
                 for (XmlEntity entity : xmlEntity) {
-                    final MyTreeNode defaultMutableTreeNode = new MyTreeNode(new String(entity.getTitle()));
+                    final MyTreeNode defaultMutableTreeNode = new MyTreeNode(label(entity));
                     defaultMutableTreeNode.setUserEntity(entity);
                     root.add(defaultMutableTreeNode);
                 }
@@ -86,6 +86,24 @@ public class NoteTreeView extends Tree implements ToolWindowFactory {
         final ContentFactory contentFactory = ContentFactory.SERVICE.getInstance();
         Content content = contentFactory.createContent(noteTreeView, "", false);
         toolWindow.getContentManager().addContent(content);
+    }
+
+    /**
+     * 列表里显示的文字
+     * <p>
+     * 类型规则不绑定单个文件，只显示备注看不出它管的是什么，所以补上扩展名和生效范围。
+     * </p>
+     */
+    private static String label(XmlEntity entity) {
+        final String title = null == entity.getTitle() ? "" : entity.getTitle();
+        final String extension = entity.getExtension();
+        if (null == extension || extension.trim().isEmpty()) {
+            return title;
+        }
+        final String path = entity.getPath();
+        final String scope = null == path || path.trim().isEmpty() ? "整个项目" : path;
+        final String suffix = "*." + extension.trim() + " @ " + scope;
+        return title.isEmpty() ? suffix : title + "  [" + suffix + "]";
     }
 
 }
