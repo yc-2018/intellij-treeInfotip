@@ -1,10 +1,12 @@
 <idea-plugin>
-    <id>com.linkkou.plugin.intellij.assistant</id>
-    <name>TreeInfotip</name>
-    <vendor email="chinacclk@gmail.com" url="https://github.com/Link-Kou/intellij-treeInfotip">linkkou</vendor>
+    <!-- 复刻版独立的插件 id，不能和原版 com.linkkou.plugin.intellij.assistant 相同：
+         IDE 的更新检查是按 id 去 Marketplace 查的，沿用原 id 会被原版的构建"更新"掉 -->
+    <id>com.github.yc556.treeinfotip</id>
+    <name>TreeInfotip 目录树备注</name>
+    <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.1.2</version>
+    <version>5.2.0</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -13,8 +15,8 @@
       <br/>
       <p>
           <b>
-            <a href="https://github.com/Link-Kou/intellij-treeInfotip">GitHub</a> |
-            <a href="https://github.com/Link-Kou/intellij-treeInfotip/issues">Issues</a> |
+            <a href="https://github.com/yc-2018/intellij-treeInfotip">GitHub</a> |
+            <a href="https://github.com/yc-2018/intellij-treeInfotip/issues">Issues</a> |
           </b>
       </p>
       <p>
@@ -27,14 +29,34 @@
       </p>
       <br/>
       <p>
-        <a title="To Github" href="https://github.com/Link-Kou/intellij-treeInfotip"><img src="https://raw.githubusercontent.com/Link-Kou/intellij-treeInfotip/master/image/2021-06-19_14-39-35.png" width="532" alt="image"></a>
+        <a title="To Github" href="https://github.com/yc-2018/intellij-treeInfotip"><img src="https://raw.githubusercontent.com/yc-2018/intellij-treeInfotip/master/image/2023-04-14_14.51.58.png" width="532" alt="image"></a>
       </p>
       <br/>
-      <p><a href="https://github.com/Link-Kou/intellij-treeInfotip/issues">Send issues</a></p>
+      <p><a href="https://github.com/yc-2018/intellij-treeInfotip/issues">Send issues</a></p>
+      <br/>
+      <p>
+        This is a maintained fork of <a href="https://github.com/Link-Kou/intellij-treeInfotip">Link-Kou/intellij-treeInfotip</a>.
+        Please uninstall the original <b>TreeInfotip</b> before using this one — running both decorates the tree twice.
+      </p>
+      <p>
+        本插件是 <a href="https://github.com/Link-Kou/intellij-treeInfotip">Link-Kou/intellij-treeInfotip</a> 的复刻续维护版本。
+        请先卸载原版 <b>TreeInfotip</b> 再使用，两个一起装会重复装饰目录树。
+      </p>
     ]]></description>
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.2.0</p>
+        <li>插件改用独立身份发布：id 换成 com.github.yc556.treeinfotip，名称改为「TreeInfotip 目录树备注」，与原版并存不再互相顶掉更新</li>
+        <li>启动时检测原版 TreeInfotip 是否还装着，装着就弹一次提示并给出「打开插件管理」入口，避免两份插件重复装饰目录树</li>
+        <li>重命名了所有全局注册的 id（右键菜单组、7 个菜单项、2 个工具窗口），加上 TreeInfotip 前缀，不再占用 FirstAction、StudyAction.MyGroup、XmlEditor 这类通用名字</li>
+        <li>XML 编辑窗口的标签由「XmlEditor」改为「TreeInfotip XML」，备注窗口改为「TreeInfotip 备注」；窗口位置和大小需要重新拖一次</li>
+        <li>The plugin now ships under its own identity: id com.github.yc556.treeinfotip, renamed to "TreeInfotip 目录树备注", so it no longer collides with the original listing</li>
+        <li>Detects the original TreeInfotip at startup and shows a one-off notification with a shortcut to the plugin manager, since running both decorates the tree twice</li>
+        <li>All globally registered ids were namespaced under TreeInfotip (menu group, 7 actions, 2 tool windows), freeing generic names like FirstAction, StudyAction.MyGroup and XmlEditor</li>
+        <li>Tool window labels are now "TreeInfotip 备注" and "TreeInfotip XML"; their position and size need to be set once more</li>
+      </ul>
        <ul>
         <p>5.1.2</p>
         <li>修复部分图标设置后把目录树行高撑高的问题：可选图标里有 50 个长边超过 16（20×20、24×24、32×32、最大 48×48），现在会等比缩到一行的高度，小图标保持原样不放大</li>
@@ -161,40 +183,47 @@
     <depends>com.intellij.modules.lang</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <!-- Add your extensions here -->
-        <toolWindow id="TreeInfotip" secondary="true" icon="AllIcons.General.Note" anchor="right"
+        <!-- 工具窗口 id 是 IDE 全局的，同时也是侧边栏上显示的文字：
+             平台按 toolwindow.stripe.<id> 去资源包找标题，找不到就直接拿 id 当标题
+             （com.intellij.toolWindow.ToolwindowKt#getStripeTitleSupplier）。
+             所以这里的 id 既要唯一、又要能直接读，带空格是平台自己也在用的写法（如 Version Control） -->
+        <toolWindow id="TreeInfotip 备注" secondary="true" icon="AllIcons.General.Note" anchor="right"
                     factoryClass="com.plugins.infotip.gui.view.NoteTreeView"/>
-        <toolWindow id="XmlEditor" secondary="true" icon="AllIcons.FileTypes.Xml" anchor="bottom"
+        <toolWindow id="TreeInfotip XML" secondary="true" icon="AllIcons.FileTypes.Xml" anchor="bottom"
                     factoryClass="com.plugins.infotip.gui.view.XmlEditorToolWindow"/>
+        <notificationGroup id="TreeInfotip" displayType="STICKY_BALLOON"/>
         <postStartupActivity implementation="com.plugins.infotip.PluginStartupActivity"/>
         <treeStructureProvider implementation="com.plugins.infotip.TreeOnlyTextProvider"/>
         <projectViewNodeDecorator implementation="com.plugins.infotip.IgnoreViewNodeDecorator"/>
     </extensions>
 
     <actions>
-        <!-- Add your actions here -->
-        <group id="StudyAction.MyGroup" text="目录备注" popup="true" icon="AllIcons.Actions.MenuPaste">
+        <!-- action / group 的 id 也是 IDE 全局的，重名会被 ActionManager 拒绝注册；
+             这些 id 不对用户显示（菜单文字来自 text 属性），所以统一加 TreeInfotip 前缀 -->
+        <group id="TreeInfotip.MenuGroup" text="目录备注" popup="true" icon="AllIcons.Actions.MenuPaste">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="ReplaceInPath"/>
-            <action id="FirstAction" class="com.plugins.infotip.action.ActionDescriptionText" text="添加文字备注"
+            <action id="TreeInfotip.DescriptionText" class="com.plugins.infotip.action.ActionDescriptionText"
+                    text="添加文字备注"
                     description="给选中的文件或目录添加备注信息"/>
-            <action id="FirstAction4" class="com.plugins.infotip.action.ActionDescriptionPresentableText"
+            <action id="TreeInfotip.PresentableText" class="com.plugins.infotip.action.ActionDescriptionPresentableText"
                     text="覆盖显示名称"
                     description="用自定义名称替换节点显示的文件名,留空则恢复原名"/>
-            <action id="FirstAction6" class="com.plugins.infotip.action.ActionDescriptionTooltip"
+            <action id="TreeInfotip.Tooltip" class="com.plugins.infotip.action.ActionDescriptionTooltip"
                     text="设置悬浮提示"
                     description="设置鼠标悬停在节点上时显示的提示内容"/>
-            <action id="FirstAction2" class="com.plugins.infotip.action.ActionDescriptionColorOrIcon"
+            <action id="TreeInfotip.ColorOrIcon" class="com.plugins.infotip.action.ActionDescriptionColorOrIcon"
                     text="添加颜色或图标"
                     description="给选中的文件或目录设置图标、文字颜色与背景色"/>
-            <action id="FirstAction3" class="com.plugins.infotip.action.ActionDescriptionStrikethrough"
+            <action id="TreeInfotip.Strikethrough" class="com.plugins.infotip.action.ActionDescriptionStrikethrough"
                     text="添加/取消删除线"
                     description="给选中的文件或目录名称添加或取消删除线"/>
             <separator/>
-            <action id="FirstAction7" class="com.plugins.infotip.action.ActionDescriptionExtension"
+            <action id="TreeInfotip.Extension" class="com.plugins.infotip.action.ActionDescriptionExtension"
                     text="按扩展名批量设置"
                     description="一条规则命中一批同扩展名的文件,范围可限定为当前目录或整个项目"/>
             <separator/>
-            <action id="FirstAction5" class="com.plugins.infotip.action.ActionDescriptionClearAll" text="清除全部设置"
+            <action id="TreeInfotip.ClearAll" class="com.plugins.infotip.action.ActionDescriptionClearAll"
+                    text="清除全部设置"
                     description="清理选中节点的全部备注与样式设置"/>
         </group>
 

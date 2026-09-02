@@ -25,7 +25,7 @@ JAVA_HOME="D:/green/jdks/jdk-17.0.8" /d/green/Gradle/dists/gradle-7.6.4/bin/grad
 | 任务 | 用途 |
 |---|---|
 | `compileJava` | 只编译，最快的语法校验 |
-| `buildPlugin` | 打包，产物在 `build/distributions/TreeInfotip-<版本>.zip` |
+| `buildPlugin` | 打包，产物在 `build/distributions/TreeInfotip-Notes-<版本>.zip` |
 | `verifyPlugin` | 校验 plugin.xml 配置 |
 | `runIde` | 起沙箱 IDE 实测（沙箱目录是仓库根的 `idea-sandbox/`） |
 | `runPluginVerifier -PverifierIdeVersions=IU-2022.3.2,IU-2026.2` | 跨版本兼容性检查 |
@@ -98,7 +98,7 @@ PresentationData：图标 / locationString / tooltip / presentableText / 文字�
 
 ### 右键菜单
 
-菜单类都在 `action/` 下，注册在 `plugin.xml` 的 `StudyAction.MyGroup` 里，挂到 `ProjectViewPopupMenu`。
+菜单类都在 `action/` 下，注册在 `plugin.xml` 的 `TreeInfotip.MenuGroup` 里，挂到 `ProjectViewPopupMenu`。
 
 针对单个节点的菜单统一用 `XmlFileUtils.runActionType(event, callback)` 模板：它把选中节点转成相对路径，查缓存决定走 `onModifyPath`（已有配置）还是 `onCreatePath`（还没有）。`ActionDescriptionText` 是最标准的例子，加新菜单直接照抄。
 
@@ -114,6 +114,32 @@ PresentationData：图标 / locationString / tooltip / presentableText / 文字�
 
 `TreesStyle.ListenerStyle`、`XmlFileUtils.ListenerSave`、`PluginStartupActivity.ListenerRun` 都是 `ConcurrentHashMap<Object, Callback>` 静态注册表，用于配置变化时刷新工具窗口。它们**只 put 从不 remove**，key 一般传监听方自己的实例。
 
+### 插件身份与全局 id（5.2.0 起）
+
+本仓库是 `Link-Kou/intellij-treeInfotip` 的复刻。JetBrains 不会在原作者不配合的情况下把已有的 Marketplace 条目转给新 vendor，所以复刻版只能作为**另一个插件**发布，于是要和原版划清四套互不相干的命名空间：
+
+| 名字 | 在哪 | 撞了会怎样 |
+|---|---|---|
+| `<id>` = `com.github.yc556.treeinfotip` | `plugin.xml` | IDE 的更新检查按 id 去 Marketplace 查，沿用原 id 会被原版的构建静默"更新"掉 |
+| `<name>` = `TreeInfotip 目录树备注` | `plugin.xml` | Marketplace 条目名要唯一 |
+| `intellij.pluginName` = `TreeInfotip-Notes` | `build.gradle` | 它是 zip 根目录名，也就是装完后 `plugins/<这个名字>/`；和原版同名时后装的直接覆盖前一个的安装目录 |
+| action / group / toolWindow / notificationGroup 的 id | `plugin.xml` | 这些注册表是 IDE 全局的，重名会被拒绝注册。全部加了 `TreeInfotip` 前缀 |
+
+`group 'com.github.yc556'`（`build.gradle`）只是 Gradle 坐标，纯装饰，和上面四个都无关。
+
+**工具窗口 id 同时就是侧边栏上显示的文字**：平台按 `toolwindow.stripe.<id，空格换成下划线>` 去插件自己的资源包（没声明 `<resource-bundle>` 时是 `messages.IdeBundle`）找标题，找不到就**直接拿 id 当标题**（`com.intellij.toolWindow.ToolwindowKt#getStripeTitleSupplier` → `BundleBase.messageOrDefault`）。所以 id 带空格是合法且常见的（平台自己就有 `Version Control`、`Event Log`），现在这两个窗口的 id 是 `TreeInfotip 备注` 和 `TreeInfotip XML`，靠这条回退直接当标题用，不用建资源包。改 id 的代价是 `workspace.xml` 里记的窗口位置和大小会重置一次。
+
+action id 不对用户显示（菜单文字来自 `text=` 属性），改名只会丢掉用户自己配的快捷键——这些 action 本来就没有默认快捷键，可以忽略。
+
+`OldPluginConflictNotifier` 在 `PluginStartupActivity.runActivity` 末尾检测旧 id `com.linkkou.plugin.intellij.assistant` 还在不在，一个 IDE 会话只弹一次通知。这一条同时覆盖两种人：装着原版的，和从本插件 5.1.x 升上来的（那些构建用的就是这个旧 id）。
+
+两个插件同时装着时的实际情况，别搞反：
+
+- 共用 `DirectoryV3.xml` **不是冲突点**，反而是迁移免费的原因。读是各自解析进自己类加载器里的 `XmlStorage.XML_STORAGE_LIST`；写只发生在用户点菜单时，同一时刻只有一个在写，另一个靠 PSI 监听重新解析。
+- 真正的代价是每次重绘算两遍，而且两个装饰入口的执行顺序不定，**旧版跑在后面时会 `clearText()` 掉新版才有的覆盖显示名称等设置**。
+- 检测到冲突时**不要**顺手跳过自己的装饰：跳过等于把渲染完全交给旧版，用户必然看不到新特性；两边都跑最坏也就是退化成旧版的效果，是弱优于跳过的。
+- 也没有用 `<incompatible-with>`（2022.3 确实支持，`XmlReader` 解析进 `RawPluginDescriptor.incompatibilities`，`PluginSetBuilder` 执行）。它直接让插件不加载，太硬；而且它和 `com.intellij.pluginReplacement` 互斥——插件都不加载了，自然也注册不了那个 EP。
+
 ## 已知约束
 
 - `plugin.xml` 声明 `since-build="223"`，和编译平台 2022.3.2（`gradle.properties` 的 `platformVersion`）对齐，所以下限不再是「谎报」。但**上限没有**：`build.gradle` 里 `updateSinceUntilBuild = false` 是刻意的，不能写 `until-build`，否则新版 IDE 装不上。代价是新 IDE 删掉的 API 只能在运行期暴露——反射拿到的 `AllIcons` 字段名就可能凭空消失（历史事故见上）。
@@ -125,3 +151,7 @@ PresentationData：图标 / locationString / tooltip / presentableText / 文字�
 - `XmlEditorToolWindow` 的「抽离路径前缀」还是空的 TODO；「格式化」和「清理空属性」是正则实现，属性值里出现 `<` / `>` 时不安全。
 - `verifyPluginConfiguration` 会报 "The Kotlin configuration specifies apiVersion=1.7 but since-build='223' property requires apiVersion=1.7.0"，这是它按字符串比对的**误报**：真填 `1.7.0`，Kotlin 编译器直接报 `Unknown Kotlin version: 1.7.0`。这条告警忽略即可，`build.gradle` 里也写了注释。
 - `XmlEntity` 是全项目唯一用 Lombok 的类（`@Data @Accessors(chain = true)`），**不要顺手改成 Kotlin**：Kotlin 的 `var` 生成 void setter，和同名的链式 `setXxx(): XmlEntity` 是 platform declaration clash，没法共存。要么照抄链式 setter（比 Lombok 还长），要么改掉 14 处调用点（`ActionDescriptionExtension` 和 `XmlStorage` 里都有一长串链式调用）。所以 Lombok 目前拿不掉。
+- **`runIde` 起的 IU 沙箱没授权时，`postStartupActivity` 一个都不会跑**，包括本插件读 `DirectoryV3.xml` 的那次初始化。原因是未授权的 IU 会弹一个模态的 **Licenses** 窗口占住 EDT 的 modality state：`postStartupActivity` 没实现 `DumbAware` 时，`StartupManagerImpl.runPostStartupActivities` 走的是 `DumbService.unsafeRunWhenSmart(Runnable)`，模态对话框在就永远不触发（给它发 `WM_CLOSE` 也没用）。表现是沙箱能起、插件能加载、日志 0 个 ERROR，但插件像没装一样，而且沙箱常在启动约 2.5 分钟后自己退出。
+  - `build.gradle` 的 `runIde` 里那个授权 javaagent 路径是 `/Applications/jetbra/fineagent.jar`，**只在作者的 macOS 上存在**，Windows 上就是这个现象。
+  - 判断标记：日志里只有 background 类的启动活动（`IsUpToDateCheckStartupActivity`、`CodeWithMeCleanup` 这些在 +5s 出现），却没有任何 smart-mode 活动。要确认就用 `EnumWindows` 列一下那个 JVM 的可见窗口，会看到 `Licenses`。
+  - 绕过办法：把要验的逻辑临时从别的入口调一次。`ProjectViewNodeDecorator.decorate` 不受 modality 和 dumb mode 限制，是现成的替代入口（验完记得撤掉）。
