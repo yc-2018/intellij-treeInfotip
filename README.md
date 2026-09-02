@@ -1,8 +1,8 @@
-# [![TreeInfotip](trees2.svg)](https://github.com/Link-Kou/intellij-treeInfotip) TreeInfotip
+# [![TreeInfotip](trees2.svg)](https://github.com/yc-2018/intellij-treeInfotip) TreeInfotip
 
-![GitHub release (latest by date)](https://img.shields.io/github/v/release/Link-Kou/intellij-treeInfotip)
-![GitHub](https://img.shields.io/github/license/Link-Kou/intellij-treeInfotip)
-![GitHub issues](https://img.shields.io/github/issues/Link-Kou/intellij-treeInfotip)
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/yc-2018/intellij-treeInfotip)
+![GitHub](https://img.shields.io/github/license/yc-2018/intellij-treeInfotip)
+![GitHub issues](https://img.shields.io/github/issues/yc-2018/intellij-treeInfotip)
 ![JetBrains plugins](https://img.shields.io/jetbrains/plugin/d/12994)
 ![JetBrains Plugins](https://img.shields.io/jetbrains/plugin/v/12994)
 
@@ -50,7 +50,7 @@
 
 IDE -> <kbd>Preferences</kbd> -> <kbd>Plugins</kbd> -> <kbd>TreeInfotip</kbd>
 
-![样例](https://raw.githubusercontent.com/Link-Kou/intellij-treeInfotip/master/image/2023-04-14_14.54.35.png "样例")
+![样例](https://raw.githubusercontent.com/yc-2018/intellij-treeInfotip/master/image/2023-04-14_14.54.35.png "样例")
 
 ### 源代码构建
 
@@ -64,5 +64,5 @@ IDE -> <kbd>Preferences</kbd> -> <kbd>Plugins</kbd> -> <kbd>TreeInfotip</kbd>
 
 > ##### 图片示例：
 
-![样例](https://raw.githubusercontent.com/Link-Kou/intellij-treeInfotip/master/image/2023-04-14_14.51.58.png "样例")
-![样例](https://raw.githubusercontent.com/Link-Kou/intellij-treeInfotip/master/image/2023-04-14_14.52.35.png "样例")
+![样例](https://raw.githubusercontent.com/yc-2018/intellij-treeInfotip/master/image/2023-04-14_14.51.58.png "样例")
+![样例](https://raw.githubusercontent.com/yc-2018/intellij-treeInfotip/master/image/2023-04-14_14.52.35.png "样例")
