@@ -7,14 +7,15 @@
          "contains invalid characters"。这条检查按通道区分、和是不是首次建条目无关——
          网页后台上传 zip 会跑（5.2.0 就是这么被拒的），本地 runPluginVerifier 也会跑
          （5.4.0 实测：直接判整个包 invalid，Scheduled verifications (0)，API 检查一个都不做），
-         但 `./gradlew publishPlugin` 走 Marketplace API 不跑，作者另一个插件
+         **CI 上的 runPluginVerifier job 也会跑**（5.4.0 推送 96306bc 后实测），
+         只有 `./gradlew publishPlugin` 走 Marketplace API 不跑，作者另一个插件
          sql-heading-folding 就带着中文名从 1.0.4 发到了 1.1.8。
-         所以：这一版起只能用 CI 的 publishPlugin 发布，不能用网页上传；
-         本地要跑 verifier 查 API 问题，得先把这行临时改成纯拉丁的 TreeInfotip Notes 再打包。
+         所以中文名目前走不通：本地、CI、网页上传三条路全被 verifier 拦；
+         publishPlugin 虽然不校验，但仓库没配 JETBRAINS_MARKETPLACE_TOKEN。
          详见 CLAUDE.md 的「Marketplace 的描述符校验」一节。
          Marketplace 的展示名只从这里读，网页后台改不了，所以改名只能靠上传新版本。
          另外名字里不能出现 JetBrains 品牌词和 emoji，长度上限 60、建议 30 以内 -->
-    <name>TreeInfotip Notes / 目录树备注</name>
+    <name>TreeInfotip Notes</name>
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
@@ -60,11 +61,9 @@
     <change-notes><![CDATA[
        <ul>
         <p>5.4.0</p>
-        <li>插件名改为中英文「TreeInfotip Notes / 目录树备注」（Marketplace 只在首次建条目时限定拉丁字符，条目已建好）</li>
-        <li>换掉两个图标：右键菜单「目录备注」分组用新的备注图标，侧边栏改用按插件 logo 重绘的 16×16 单色图标，浅色主题显示深灰、深色主题自动切白色</li>
+        <li>右键菜单「目录备注」分组用新的备注图标，侧边栏改用按插件 logo 重绘的 16×16 单色图标，浅色主题显示深灰、深色主题自动切白色</li>
         <li>备注列表不再出现空白行：只设了颜色/图标/删除线、没写备注也没改显示名的规则不再列出；没写备注但覆盖了显示名称的，显示那个显示名</li>
         <li>备注列表双击不会再没反应：路径已失效的、以及只按扩展名匹配的全项目规则，双击直接跳到 DirectoryV3.xml 里这条规则所在的行</li>
-        <li>Renamed the plugin to the bilingual "TreeInfotip Notes / 目录树备注" (Marketplace enforces Latin-only names when creating a listing, which already exists)</li>
         <li>New icons: a dedicated icon for the "目录备注" context menu group, and a 16×16 monochrome tool window icon redrawn from the plugin logo, dark grey on light themes and white on dark ones</li>
         <li>No more blank rows in the note list: rules that only set a color/icon/strikethrough are skipped, and rules with an overridden display name but no note now show that name</li>
         <li>Double-clicking a note always does something now: dead paths and project-wide extension rules jump to the matching line in DirectoryV3.xml</li>
