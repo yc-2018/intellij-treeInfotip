@@ -14,7 +14,7 @@
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.3.1</version>
+    <version>5.3.2</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -54,6 +54,17 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.3.2</p>
+        <li>清掉 Marketplace 的 Plugin Verifier 报出的全部 9 处问题（5 处待删除 API、2 处已废弃 API、2 处内部 API），上传 5.3.1 时就是被这些卡住的</li>
+        <li>不再引用内部 API：冲突检测从 PluginManagerCore.getPlugin 换成 isPluginInstalled + isDisabled，通知里的「打开插件管理」按 configurable id 定位，不再直接用 PluginManagerConfigurable 类</li>
+        <li>ContentFactory.SERVICE 换成 ContentFactory.getInstance()，ColorChooser 换成 ColorChooserService，ReadAction.run(ThrowableRunnable) 换成 Application.runReadAction</li>
+        <li>删掉两个已废弃且没有实际作用的覆盖方法：ProjectViewNodeDecorator 的 PackageDependenciesNode 重载和 TreeStructureProvider.getData，渲染行为不变</li>
+        <li>Fixed all 9 issues reported by the Marketplace Plugin Verifier (5 scheduled-for-removal, 2 deprecated, 2 internal API usages) that blocked the 5.3.1 upload</li>
+        <li>Dropped internal API usage: conflict detection now uses PluginManagerCore.isPluginInstalled/isDisabled, and the notification action locates the plugin page by configurable id instead of referencing PluginManagerConfigurable</li>
+        <li>Replaced ContentFactory.SERVICE with getInstance(), ColorChooser with ColorChooserService, and ReadAction.run(ThrowableRunnable) with Application.runReadAction</li>
+        <li>Removed two deprecated no-op overrides (ProjectViewNodeDecorator's PackageDependenciesNode overload and TreeStructureProvider.getData); rendering is unchanged</li>
+      </ul>
        <ul>
         <p>5.3.1</p>
         <li>插件名从「TreeInfotip 目录树备注」改为「TreeInfotip Notes」：Marketplace 上传时校验 plugin.xml 的 name，只放行字母、数字、空格和 .,+_-/:()#'&amp;[]|，中文字符会被拒（Plugin Verifier 1.393 起写明必须是拉丁字符）</li>

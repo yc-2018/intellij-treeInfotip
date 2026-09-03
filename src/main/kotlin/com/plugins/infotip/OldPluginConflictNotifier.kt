@@ -1,12 +1,12 @@
 package com.plugins.infotip
 
-import com.intellij.ide.plugins.PluginManagerConfigurable
 import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.extensions.PluginId
+import com.intellij.openapi.options.SearchableConfigurable
 import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.project.Project
 import java.util.concurrent.atomic.AtomicBoolean
@@ -33,6 +33,17 @@ object OldPluginConflictNotifier {
     /** 对应 plugin.xml 里注册的 `<notificationGroup id="TreeInfotip"/>` */
     private const val NOTIFICATION_GROUP = "TreeInfotip"
 
+    /**
+     * 插件管理页那个 configurable 的 id，取自 `PluginManagerConfigurable.getId()`
+     * （2022.3 和 2026.2 都返回这个值）。
+     *
+     * 不直接引用 `PluginManagerConfigurable` 类：它标了 `@ApiStatus.Internal`，
+     * Marketplace 的 Plugin Verifier 会报 "internal API usage"。
+     * 也不要改成 `ActionManager` 执行内置 action——那个 action 的 id 在 2022.3 是
+     * `WelcomeScreen.Plugins`、在 2026.2 已经改成 `ShowPlugins`，跨版本对不上。
+     */
+    private const val PLUGIN_MANAGER_CONFIGURABLE_ID = "preferences.pluginManager"
+
     /** 一个 IDE 会话只提示一次，同时开着多个项目也不会弹好几遍 */
     private val notified = AtomicBoolean(false)
 
@@ -45,8 +56,9 @@ object OldPluginConflictNotifier {
     fun checkAndNotify(project: Project) {
         try {
             val oldId = PluginId.getId(OLD_PLUGIN_ID)
-            // 装了并且没被停用才算冲突
-            if (PluginManagerCore.getPlugin(oldId) == null || PluginManagerCore.isDisabled(oldId)) return
+            // 装了并且没被停用才算冲突。用 isPluginInstalled 而不是 getPlugin(id) != null：
+            // 后者标了 @ApiStatus.Internal，会被 Plugin Verifier 报出来
+            if (!PluginManagerCore.isPluginInstalled(oldId) || PluginManagerCore.isDisabled(oldId)) return
             if (!notified.compareAndSet(false, true)) return
 
             val manager = NotificationGroupManager.getInstance()
@@ -67,7 +79,13 @@ object OldPluginConflictNotifier {
                 )
                 .setImportant(true)
                 .addAction(NotificationAction.createSimple("打开插件管理") {
-                    ShowSettingsUtil.getInstance().showSettingsDialog(project, PluginManagerConfigurable::class.java)
+                    // 按 id 找 configurable，避开 internal 的 PluginManagerConfigurable 类。
+                    // 万一以后这个 id 变了，最坏也只是打开设置对话框、不定位到插件页
+                    ShowSettingsUtil.getInstance().showSettingsDialog(
+                        project,
+                        { it is SearchableConfigurable && it.id == PLUGIN_MANAGER_CONFIGURABLE_ID },
+                        { }
+                    )
                 })
                 .notify(project)
         } catch (e: Throwable) {

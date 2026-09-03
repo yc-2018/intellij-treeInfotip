@@ -23,7 +23,7 @@ public class XmlEditorToolWindow implements ToolWindowFactory {
     @Override
     public void createToolWindowContent(@NotNull Project project, @NotNull ToolWindow toolWindow) {
         XmlEditorPanel editorPanel = new XmlEditorPanel(project);
-        final ContentFactory contentFactory = ContentFactory.SERVICE.getInstance();
+        final ContentFactory contentFactory = ContentFactory.getInstance();
         Content content = contentFactory.createContent(editorPanel, "", false);
         toolWindow.getContentManager().addContent(content);
     }

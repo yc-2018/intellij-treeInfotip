@@ -113,11 +113,32 @@ runIde {
     jvmArgs = extraJvmArgs
 }
 
-// 兼容性校验：可通过 -PverifierIdeVersions=IU-2022.3.2,IU-2026.2 覆盖
+// 兼容性校验：可通过 -PverifierIdeVersions=IU-2022.3.2,IU-2026.2 覆盖，
+// 也可以用 -PverifierLocalPaths="D:/app/JetBrains/IntelliJ IDEA 2026.2.1" 直接指向本机
+// 已装好的 IDE——ideVersions 每个版本都要下载 1~2GB 的完整包，本机有就别再下一遍。
+// 注意这个任务要联网取 verifier CLI，不能加 --offline。
 runPluginVerifier {
-    def versions = (project.findProperty('verifierIdeVersions') ?: 'IU-2022.3.2')
+    def localIdes = (project.findProperty('verifierLocalPaths') ?: '')
             .toString().split(',').collect { it.trim() }.findAll { it }
-    ideVersions = versions
+    if (localIdes) {
+        localPaths = localIdes.collect { file(it) }
+    } else {
+        def versions = (project.findProperty('verifierIdeVersions') ?: 'IU-2022.3.2')
+                .toString().split(',').collect { it.trim() }.findAll { it }
+        ideVersions = versions
+    }
+    // 不指定 runtimeDir 时插件会联网去下 JBR，国内网络下直接 Connection timed out，
+    // 所以本机跑一定要传 -PverifierRuntimeDir=<某个 JDK 或 IDE 自带的 jbr 目录>。
+    def rt = project.findProperty('verifierRuntimeDir')
+    if (rt) {
+        runtimeDir = rt.toString()
+    }
+    // verifierVersion 默认是 "latest"，解析它要访问 api.github.com，国内同样超时。
+    // 传 -PverifierVersion=1.410 这类具体版本号，就改从 maven（含 aliyun 镜像）拉。
+    def vv = project.findProperty('verifierVersion')
+    if (vv) {
+        verifierVersion = vv.toString()
+    }
 }
 
 publishPlugin {

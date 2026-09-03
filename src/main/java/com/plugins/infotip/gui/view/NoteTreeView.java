@@ -85,7 +85,7 @@ public class NoteTreeView extends Tree implements ToolWindowFactory {
         PluginStartupActivity.ListenerRun(project, runCallback);
         XmlFileUtils.ListenerSave(project, saveCallback);
         saveCallback.run();
-        final ContentFactory contentFactory = ContentFactory.SERVICE.getInstance();
+        final ContentFactory contentFactory = ContentFactory.getInstance();
         //必须套一层滚动面板，否则备注条数超过工具窗口高度时只能看到前几条，滚不动
         Content content = contentFactory.createContent(new JBScrollPane(noteTreeView), "", false);
         toolWindow.getContentManager().addContent(content);

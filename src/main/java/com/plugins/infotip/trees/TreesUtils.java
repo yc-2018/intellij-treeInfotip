@@ -3,7 +3,7 @@ package com.plugins.infotip.trees;
 import com.intellij.ide.projectView.ProjectView;
 import com.intellij.ide.projectView.impl.nodes.AbstractPsiBasedNode;
 import com.intellij.ide.util.treeView.AbstractTreeNode;
-import com.intellij.openapi.application.ReadAction;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -140,12 +140,13 @@ public class TreesUtils {
         if (null == file) {
             return;
         }
-        //2024 起 EDT 不再隐式持有读锁，PSI 查找必须自己包一层 ReadAction，否则
+        //2024 起 EDT 不再隐式持有读锁，PSI 查找必须自己包一层读操作，否则
         //ThreadingAssertions.assertReadAccess 会抛 "Read access is allowed from
         //inside read-action only"——在 2026.2 上双击侧边栏的备注必炸。
         //别用报错信息里推荐的 WriteIntentReadAction，那是 2024.1 才有的类，
-        //本插件 since-build=223 编不过。
-        ReadAction.run(() -> {
+        //本插件 since-build=223 编不过；也别用 ReadAction.run(ThrowableRunnable)，
+        //那个重载已经废弃，Marketplace 的 Plugin Verifier 会报出来。
+        ApplicationManager.getApplication().runReadAction(() -> {
             final PsiManager manager = PsiManager.getInstance(project);
             //selectPsiElement 内部还要再读一次 PSI 拿 VirtualFile，所以一起包进来
             final PsiElement element = file.isDirectory() ? manager.findDirectory(file) : manager.findFile(file);

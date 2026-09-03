@@ -113,7 +113,7 @@ public class ActionDescriptionExtension extends AnAction {
             return;
         }
 
-        final SelectColorIconsView dialog = new SelectColorIconsView();
+        final SelectColorIconsView dialog = new SelectColorIconsView(project);
         dialog.pack();
         dialog.setTitle("选择图标或颜色（." + extension + "）");
         dialog.setPreferredSize(new Dimension(380, 200));

@@ -30,6 +30,20 @@ JAVA_HOME="D:/green/jdks/jdk-17.0.8" /d/green/Gradle/dists/gradle-7.6.4/bin/grad
 | `runIde` | 起沙箱 IDE 实测（沙箱目录是仓库根的 `idea-sandbox/`） |
 | `runPluginVerifier -PverifierIdeVersions=IU-2022.3.2,IU-2026.2` | 跨版本兼容性检查 |
 
+`runPluginVerifier` 在国内网络下要额外传三个属性，否则会卡在下载上：
+
+```bash
+JAVA_HOME="D:/green/jdks/jdk-17.0.8" /d/green/Gradle/dists/gradle-7.6.4/bin/gradle runPluginVerifier --no-daemon \
+  -PverifierLocalPaths="D:/app/JetBrains/IntelliJ IDEA 2026.2.1" \
+  -PverifierRuntimeDir="D:/app/JetBrains/IntelliJ IDEA 2026.2.1/jbr" \
+  -PverifierVersion=1.410
+```
+
+- `verifierLocalPaths` 直接指向本机已装的 IDE，绕开 `ideVersions` 每个版本 1~2GB 的下载。传了它就不再看 `verifierIdeVersions`。
+- `verifierRuntimeDir` 不传的话插件会联网下 JBR，直接 `Connection timed out`。随便给个 JDK 17 或 IDE 自带的 `jbr` 目录都行。
+- `verifierVersion` 默认是 `latest`，解析它要访问 `api.github.com`，同样超时。给具体版本号（`1.410`）就改从 maven 拉，走 aliyun 镜像。
+- **这个任务不能加 `--offline`**：verifier CLI 本身要从 maven 取。报告在 `build/reports/pluginVerifier/<IDE build>/`，跑一轮约 13 分钟。
+
 **没有测试代码**：`src/test` 目录不存在，`gradle test` 会通过但什么都没跑。要验证纯算法逻辑（比如路径匹配优先级），可以把逻辑抄成临时的单文件 Java，用 `java Xxx.java` 跑断言，跑完删掉。
 
 改完代码**必须 `runIde` 实测**。`plugin.xml` 里 action 注册写错、或者引用了新版本已删除的 `AllIcons` 字段，都是启动期抛异常（历史事故：`AllIcons.Actions.Menu_paste` 在 2026.2 被移除，右键菜单整个不可用）。编译通过说明不了任何问题；另外目录树只在**重绘时**才会应用新样式。
@@ -155,13 +169,45 @@ Marketplace 的插件名始终从 `plugin.xml` 读，网页后台改不了，所
 
 顺带还有几条软约束（来自 Marketplace 的命名与审核指南）：名字里不能出现 `JetBrains` 或其他 JetBrains 品牌词，不建议带 `Plugin`、`Support`、`Integration` 这类词，不能用 emoji，长度上限 60、建议控制在 30 以内。
 
+### Plugin Verifier 的 API 校验（5.3.2 起）
+
+描述符那关过了之后还有第二关。**结论是 `Compatible` 也照样会被打回**：5.3.1 上传后 Marketplace 回了一封 "The Plugin Verifier found issues with this update"（工单 #9122161，条目 34046、更新 1160283、`approve:false`），而报告里并没有任何解析失败的类或方法，`Compatible` 那行下面跟的是：
+
+```
+5 usages of scheduled for removal API and 2 usages of deprecated API. 2 usages of internal API
+```
+
+**内部 API（`@ApiStatus.Internal`）是必须清掉的**，用了就是明确违规；待删除和已废弃的严格说算警告，但一起清掉最省事，免得再来一封。5.3.2 清掉的 9 处对应关系：
+
+| 原来用的 | 换成 |
+|---|---|
+| `PluginManagerCore.getPlugin(PluginId) != null`（internal） | `isPluginInstalled(id) && !isDisabled(id)` |
+| `PluginManagerConfigurable`（类本身 internal） | 按 configurable id `"preferences.pluginManager"` 找 |
+| `ContentFactory.SERVICE`（两处） | `ContentFactory.getInstance()` |
+| `com.intellij.ui.ColorChooser` | `ColorChooserService.getInstance().showDialog(...)` |
+| `ReadAction.run(ThrowableRunnable)` | `ApplicationManager.getApplication().runReadAction(Runnable)` |
+| 覆盖 `ProjectViewNodeDecorator.decorate(PackageDependenciesNode, ...)` | 直接删（2022.3 起是 default 方法，覆盖没作用） |
+| 覆盖 + 自调 `TreeStructureProvider.getData(Collection, String)` | 直接删（样式在 `modify` 里已经全量应用过） |
+
+#### 选替代 API 的方法：两份 classpath 一起比
+
+难点在于 `since-build=223` 要求替代品在 **2022.3.2 就存在**，而它同时得在 **verifier 的目标版本上不是 internal / 不带删除标记**。只看一头必然踩坑（我第一版把 6 参 `showDialog` 选进去，就是只扫了 2026.2 没扫 2022.3）。两份 lib 目录：
+
+- 2022.3.2（编译基线）：`/d/green/Gradle/repository/caches/modules-2/files-2.1/com.jetbrains.intellij.idea/ideaIU/2022.3.2/<hash>/ideaIU-2022.3.2/lib` —— 注意有一层 hash 目录，`ls -d .../ideaIU/*/` 找不到，用 `find ... -name app.jar` 定位。
+- 2026.2.1（目标）：`/d/app/JetBrains/IntelliJ IDEA 2026.2.1/lib`
+
+用 `javap -v -cp "$(ls *.jar | tr '\n' ';')" <全限定类名>` 把方法声明和紧跟其后的 `RuntimeInvisibleAnnotations` 配对着看，就能判定每个重载的状态。已经查清的几条，省得再查一遍：
+
+- `PluginManager.getInstance()` 和 `findEnabledPlugin()` 在 2026.2 都是 internal，**不能**当 `PluginManagerCore.getPlugin` 的替代品；`isPluginInstalled` / `isDisabled` 两个版本都干净。
+- `PluginManagerConfigurable.getId()` 在两个版本都返回 `"preferences.pluginManager"`（`javap -c` 里能直接看到 `ldc // String preferences.pluginManager`），所以按 id 找 configurable 是稳的。**别改成 `ActionManager` 执行内置 action**：那个 action 的 id 2022.3 是 `WelcomeScreen.Plugins`、2026.2 已经改成 `ShowPlugins`，跨版本对不上。
+- **`ColorChooserService.showDialog` 的两个重载废弃状态是反的**：不带 `Project` 的 6 参版在 **2022.3 就是 `@Deprecated(forRemoval)`**、到 2026.2 反而干净；带 `Project` 的 7 参版两个版本都干净。所以要用 7 参那个（`SelectColorIconsView` 为此加了 `Project` 构造参数）。`project` 形参可以传 `null`——2022.3 的形参没标 `@NotNull`，2026.2 的 Kotlin 实现也只对 `parent` 和 `listeners` 做 `checkNotNullParameter`。
+
 ## 已知约束
 
 - `plugin.xml` 声明 `since-build="223"`，和编译平台 2022.3.2（`gradle.properties` 的 `platformVersion`）对齐，所以下限不再是「谎报」。但**上限没有**：`build.gradle` 里 `updateSinceUntilBuild = false` 是刻意的，不能写 `until-build`，否则新版 IDE 装不上。代价是新 IDE 删掉的 API 只能在运行期暴露——反射拿到的 `AllIcons` 字段名就可能凭空消失（历史事故见上）。
 - `sourceCompatibility = targetCompatibility = 17`。**不要提到 21**：`platformVersion=2022.3.2` 自带的 JBR 是 17，21 的字节码在 `runIde` 沙箱和用户机器上都加载不了；真要上 21 得先把 `platformVersion` 拉到 2025.x，那会一并撞上 `ContentFactory.SERVICE` 这类已标记删除的 API。
-- **新版平台的 EDT 不再隐式持有读锁**，Swing 监听器里直接碰 PSI 或索引会抛 `Read access is allowed from inside read-action only`（`ThreadingAssertions.assertReadAccess`）。2022.3 上不报，2024.1 起报——`NoteTreeView` 的双击跳转就是这么在 2026.2 上炸的（5.3.0 修）。补法是自己包 `ReadAction.run(...)`，**不能用报错信息里推荐的 `WriteIntentReadAction`**：那个类 2024.1 才有，`since-build=223` 编不过。`TreesUtils.Navigation` 里 `findDirectory`/`findFile` 和 `selectPsiElement` 包在同一个 read action 里，因为后者内部还要再读一次 PSI 拿 `VirtualFile`。
+- **新版平台的 EDT 不再隐式持有读锁**，Swing 监听器里直接碰 PSI 或索引会抛 `Read access is allowed from inside read-action only`（`ThreadingAssertions.assertReadAccess`）。2022.3 上不报，2024.1 起报——`NoteTreeView` 的双击跳转就是这么在 2026.2 上炸的（5.3.0 修）。补法是自己包一层读操作，用 `ApplicationManager.getApplication().runReadAction(Runnable)`：**不能用报错信息里推荐的 `WriteIntentReadAction`**（那个类 2024.1 才有，`since-build=223` 编不过），**也不能用 `ReadAction.run(ThrowableRunnable)`**（那个重载已废弃，Plugin Verifier 会报出来，5.3.2 换掉）。`TreesUtils.Navigation` 里 `findDirectory`/`findFile` 和 `selectPsiElement` 包在同一个 read action 里，因为后者内部还要再读一次 PSI 拿 `VirtualFile`。
 - 侧边栏（`NoteTreeView`）的路径失效检查和类型图标都在 `buildNode` 里算一次、缓存在 `MyTreeNode` 的 `missing` / `icon` 字段上，**不要挪进渲染器**：`customizeCellRenderer` 每帧对每个可见行都会调一次，碰 VFS 和 `FileTypeManager` 太贵。代价是在 IDE 外面删文件不会自动变红，靠双击根节点重建列表刷新；查存在性走 `TreesUtils.findProjectFile`（`refreshIfNeeded=false`），宁可漏报也不要把好路径误标成失效。另外 `root.add(...)` 不发 model 事件，`DefaultTreeModel.reload()` 必须在加完子节点**之后**调（原代码是先 reload 再 add，新节点得等下一次重绘才出来）。
-- `ContentFactory.SERVICE.getInstance()` 已废弃（`NoteTreeView`、`XmlEditorToolWindow` 各一处），为向下兼容刻意保留，编译告警可以忽略。
 - 图标下拉框没有「不设置」选项（`IconsUtils.ICONS` 纯反射 `AllIcons` 生成），所以颜色/图标对话框一点确定就必然写入一个 `icon` 属性。这是既有行为。
 - **量图标尺寸不能用裸 JVM 反射 `getIconWidth()`**。没有 `Application` 时 `CachedImageIcon` 加载不了真图，会退化成 16×16 的空图标，量出来「全都是 16×16」，看着像没问题其实什么都没量到。要量真实尺寸就直接读平台 jar 里 SVG 根标签声明的 `width` / `height`（2022.3 共 5894 张去重 SVG，其中 1221 张不是 16×16；`AllIcons` 暴露的 1080 个字段里有 50 个长边超过 16，最大 48×48）。要验缩放逻辑就自己造假 `Icon`（只重写 `getIconWidth` / `getIconHeight`）去打 `IconsUtils.fit`，不依赖 `Application`。
 - 缩图标别用 `IconUtil.resizeSquared`：它的比例**只按宽算**（`IconUtil$4.paintIcon` 里 `ratio = size / source.getIconWidth()`），`AllIcons` 里有 `2×19`、`32×15`、`18×22` 这类非正方形的，按宽算会把 `2×19` 放大成 `16×152`。要按 `max(宽, 高)` 自己算倍率交给 `IconUtil.scale(icon, null, factor)`（`OBJ_SCALE` 相对倍率，平台会叠在 DPI 缩放之上）。
