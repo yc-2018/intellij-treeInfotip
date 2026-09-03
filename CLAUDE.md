@@ -144,10 +144,14 @@ action id 不对用户显示（菜单文字来自 `text=` 属性），改名只�
 
 上传 zip 时 Marketplace 会校验 `plugin.xml`，不过这一关就传不上去。踩过的两条：
 
-- **`<name>` 只能用拉丁字符**。放行的是字母、数字、空格和 `.,+_-/:()#'&[]|`，中日韩文字直接判"包含无效字符"。5.2.0 设的 `TreeInfotip 目录树备注` 就是这么被拒的（5.3.1 改成 `TreeInfotip Notes`）。Plugin Verifier 1.393 的发布说明把这条写死成 "Plugin name must be in Latin characters"。
+- **首次上传时 `<name>` 只能用拉丁字符**。放行的是字母、数字、空格和 `.,+_-/:()#'&[]|`，中日韩文字直接判"包含无效字符"。5.2.0 设的 `TreeInfotip 目录树备注` 就是这么被拒的（5.3.1 改成 `TreeInfotip Notes`）。Plugin Verifier 1.393 的发布说明把这条写死成 "Plugin name must be in Latin characters"。
 - **`<description>` 要以拉丁字符开头、正文至少 40 字**。正文里的中文没问题，现在开头那句 `TreeInfotip plugin for IntelliJ IDEs.` 正好满足，**改描述时别把中文段落挪到最前面**，emoji 放开头也会被拒。
 
-线上能看到中文名的插件不代表现在还能这么起名：这条校验是后加的，已上架的条目不会被回溯检查。也**没有"过校验 + 显示中文名"的折中**——Marketplace 的插件名始终从 `plugin.xml` 读，网页后台改不了，只能靠上传新版本改。
+**条目建起来之后名字可以带中文**。作者另一个插件 `yc-2018/intellij-sql-heading-folding`（本机 `D:\myData\intellij-sql-heading-folding`）是实证：2026-08-09 用纯英文 `SQL Heading Folding` 在网页首发建条目，08-13 的 1.0.4 改成 `SQL Heading Folding / SQL 标题折叠`，之后一路发到 1.1.8 都带着中文名。所以顺序是**先用拉丁名把条目建出来，再改中英文名发新版本**，不是"中文永远不行"。
+
+到底是"只有首次创建条目才校验名字"还是"网页上传校验、API 上传不校验"，这一个案例分不出来——它把两个变量一起变了（首次→更新、网页→API）。想改中文名就照它走过的路来：CI 里 `./gradlew publishPlugin`，token 从 `JETBRAINS_MARKETPLACE_TOKEN` 环境变量读。本仓库 `release.yml` 已经有这个步骤（挂在 `env.JETBRAINS_MARKETPLACE_TOKEN != ''` 后面），只差在 GitHub 仓库 Secrets 里加上 token。
+
+Marketplace 的插件名始终从 `plugin.xml` 读，网页后台改不了，所以改名只能靠上传新版本。
 
 顺带还有几条软约束（来自 Marketplace 的命名与审核指南）：名字里不能出现 `JetBrains` 或其他 JetBrains 品牌词，不建议带 `Plugin`、`Support`、`Integration` 这类词，不能用 emoji，长度上限 60、建议控制在 30 以内。
 

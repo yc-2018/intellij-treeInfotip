@@ -2,11 +2,13 @@
     <!-- 复刻版独立的插件 id，不能和原版 com.linkkou.plugin.intellij.assistant 相同：
          IDE 的更新检查是按 id 去 Marketplace 查的，沿用原 id 会被原版的构建"更新"掉 -->
     <id>com.github.yc556.treeinfotip</id>
-    <!-- 名字只能用拉丁字符：Marketplace 上传时会校验 name，允许的只有字母、数字、空格和
+    <!-- 首次上传 Marketplace 时名字只能用拉丁字符：会校验 name，允许的只有字母、数字、空格和
          .,+_-/:()#'&[]| 这几个符号，中日韩文字直接被拒（Plugin Verifier 1.393 起明确写成
-         "Plugin name must be in Latin characters"）。而且 Marketplace 的插件名只能由
-         plugin.xml 驱动，网页后台改不了，所以没有"过校验 + 显示中文名"的折中办法。
-         中文说明放在 description 里（那条规则只要求开头是拉丁字符、正文至少 40 字）。
+         "Plugin name must be in Latin characters"）。
+         条目建起来之后可以再改成带中文的「TreeInfotip Notes / 目录树备注」——作者另一个插件
+         sql-heading-folding 就是先纯英文首发建条目，再改中英文名靠 CI publishPlugin 发上去的，
+         详见 CLAUDE.md 的「Marketplace 的描述符校验」一节。所以现在这个纯拉丁名是为了过首传，
+         别在条目还没建出来之前就改回中文。
          另外这里不能只写 TreeInfotip，Marketplace 的条目名要和原版区分开 -->
     <name>TreeInfotip Notes</name>
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
@@ -55,9 +57,9 @@
        <ul>
         <p>5.3.1</p>
         <li>插件名从「TreeInfotip 目录树备注」改为「TreeInfotip Notes」：Marketplace 上传时校验 plugin.xml 的 name，只放行字母、数字、空格和 .,+_-/:()#'&amp;[]|，中文字符会被拒（Plugin Verifier 1.393 起写明必须是拉丁字符）</li>
-        <li>Marketplace 的插件名只能由 plugin.xml 驱动、网页后台改不了，所以中文名没有折中办法；中文说明仍保留在插件描述与更新日志里，IDE 插件列表里显示的名字变成 TreeInfotip Notes</li>
+        <li>Marketplace 的插件名只能由 plugin.xml 驱动、网页后台改不了；条目上架之后可以再改成带中文的名字，这一版先用纯拉丁名把条目建起来</li>
         <li>Renamed the plugin to "TreeInfotip Notes": Marketplace validates the plugin.xml name against letters, digits, spaces and .,+_-/:()#'&amp;[]| only, and rejects CJK characters</li>
-        <li>The Marketplace display name comes from plugin.xml and cannot be overridden on the listing page, so the Chinese wording stays in the description and change notes instead</li>
+        <li>The Marketplace display name comes from plugin.xml and cannot be overridden on the listing page; a bilingual name can be restored on a later version once the listing exists</li>
       </ul>
        <ul>
         <p>5.3.0</p>
