@@ -1,11 +1,16 @@
 package com.plugins.infotip.gui.view;
 
 import com.intellij.icons.AllIcons;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.wm.ToolWindow;
 import com.intellij.openapi.wm.ToolWindowFactory;
+import com.intellij.psi.PsiFile;
+import com.intellij.psi.xml.XmlFile;
+import com.intellij.psi.xml.XmlTag;
 import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.components.JBScrollPane;
@@ -54,7 +59,11 @@ public class NoteTreeView extends Tree implements ToolWindowFactory {
             final List<XmlEntity> xmlEntity = XmlStorage.getXmlEntity(project);
             if (null != xmlEntity) {
                 for (XmlEntity entity : xmlEntity) {
-                    root.add(buildNode(project, entity));
+                    final MyTreeNode node = buildNode(project, entity);
+                    //没有文字可显示的规则不进列表，见 buildNode
+                    if (null != node) {
+                        root.add(node);
+                    }
                 }
             }
             //reload 要放在加完子节点之后：root.add 走的是 DefaultMutableTreeNode 自己的方法，
@@ -73,7 +82,7 @@ public class NoteTreeView extends Tree implements ToolWindowFactory {
                 if (component instanceof MyTreeNode) {
                     final Object userEntity = ((MyTreeNode) component).getUserEntity();
                     if (userEntity instanceof XmlEntity) {
-                        TreesUtils.Navigation(project, ((XmlEntity) userEntity).getPath());
+                        navigate(project, (XmlEntity) userEntity);
                     }
                 } else {
                     //双击根节点重建整个列表。路径存不存在只在建节点时查一次，
@@ -92,6 +101,58 @@ public class NoteTreeView extends Tree implements ToolWindowFactory {
     }
 
     /**
+     * 双击一条备注：能落到真实文件就跳文件，否则跳到 {@code DirectoryV3.xml} 里这条规则所在的行
+     * <p>
+     * 跳 XML 覆盖两种双击没反应的情况：路径已经被删或改名的（列表里标红那些），
+     * 以及只写了 extension 的全项目类型规则（本来就没有路径可跳）。
+     * </p>
+     * <p>
+     * 这里重新查一次 VFS 而不是看 {@link MyTreeNode#isMissing()}：那个状态是建节点时算的，
+     * 建完之后在 IDE 外面删文件不会刷新，会把已经失效的当成有效去跳，结果又是没反应。
+     * </p>
+     */
+    private static void navigate(Project project, XmlEntity entity) {
+        final String path = entity.getPath();
+        if (null != path && !path.trim().isEmpty() && null != TreesUtils.findProjectFile(project, path)) {
+            TreesUtils.Navigation(project, path);
+            return;
+        }
+        navigateToRule(project, entity);
+    }
+
+    /**
+     * 打开 {@code DirectoryV3.xml} 并把光标放到这条 {@code <tree>} 标签上
+     * <p>
+     * 偏移量来自解析时存在 {@link XmlEntity} 上的 {@link XmlTag}，所以行号一定对得上，
+     * 不用自己去文本里找。标签失效（文件被外部改过、还没重新解析完）时退到文件开头。
+     * </p>
+     */
+    private static void navigateToRule(Project project, XmlEntity entity) {
+        //取 PSI 的偏移量必须在读操作里：新版平台的 EDT 不再隐式持有读锁
+        final VirtualFile[] file = {null};
+        final int[] offset = {0};
+        ApplicationManager.getApplication().runReadAction(() -> {
+            final XmlTag tag = entity.getTag();
+            if (null != tag && tag.isValid()) {
+                final PsiFile containing = tag.getContainingFile();
+                if (null != containing) {
+                    file[0] = containing.getVirtualFile();
+                    offset[0] = tag.getTextOffset();
+                    return;
+                }
+            }
+            final XmlFile xmlFile = XmlFileUtils.getXmlFile(project);
+            if (null != xmlFile) {
+                file[0] = xmlFile.getVirtualFile();
+            }
+        });
+        //打开编辑器要在 EDT 上、读操作外面
+        if (null != file[0]) {
+            new OpenFileDescriptor(project, file[0], offset[0]).navigate(true);
+        }
+    }
+
+    /**
      * 建一个节点，同时把图标和路径失效状态算好存进去
      * <p>
      * 图标表示这条规则作用在什么上（目录 / 哪类文件 / 路径已失效），不是用户自己配的那个图标——
@@ -100,9 +161,17 @@ public class NoteTreeView extends Tree implements ToolWindowFactory {
      * <p>
      * 存不存在只在这里查一次，不放渲染器里：渲染器每帧对每个可见行都要调一次，不能碰 VFS。
      * </p>
+     *
+     * @return 没有任何文字可显示时返回 {@code null}，调用方跳过不加进列表
      */
     private static MyTreeNode buildNode(Project project, XmlEntity entity) {
-        final MyTreeNode node = new MyTreeNode(label(entity));
+        final String label = label(entity);
+        //只设了颜色、图标或删除线、没写备注也没改显示名的规则，在列表里就是一整行空白，
+        //既看不出是哪条、也没法用（这类规则的入口本来就在项目树的右键菜单上），干脆不列
+        if (label.isEmpty()) {
+            return null;
+        }
+        final MyTreeNode node = new MyTreeNode(label);
         node.setUserEntity(entity);
         final String extension = entity.getExtension();
         final boolean typeRule = null != extension && !extension.trim().isEmpty();
@@ -142,11 +211,18 @@ public class NoteTreeView extends Tree implements ToolWindowFactory {
     /**
      * 列表里显示的文字
      * <p>
+     * 备注（title）优先；没写备注但覆盖了显示名称（presentableText）的，就显示那个显示名，
+     * 免得整行空白。两个都没有时返回空串，调用方会把这条规则整个跳过。
+     * </p>
+     * <p>
      * 类型规则不绑定单个文件，只显示备注看不出它管的是什么，所以补上扩展名和生效范围。
      * </p>
      */
     private static String label(XmlEntity entity) {
-        final String title = null == entity.getTitle() ? "" : entity.getTitle();
+        String title = null == entity.getTitle() ? "" : entity.getTitle().trim();
+        if (title.isEmpty()) {
+            title = null == entity.getPresentableText() ? "" : entity.getPresentableText().trim();
+        }
         final String extension = entity.getExtension();
         if (null == extension || extension.trim().isEmpty()) {
             return title;
@@ -178,7 +254,7 @@ public class NoteTreeView extends Tree implements ToolWindowFactory {
             final String text = String.valueOf(node.getUserObject());
             if (node.isMissing()) {
                 append(text, SimpleTextAttributes.ERROR_ATTRIBUTES);
-                append("  路径已失效", SimpleTextAttributes.GRAYED_ATTRIBUTES);
+                append("  路径已失效（双击定位到 XML）", SimpleTextAttributes.GRAYED_ATTRIBUTES);
             } else {
                 append(text, SimpleTextAttributes.REGULAR_ATTRIBUTES);
             }

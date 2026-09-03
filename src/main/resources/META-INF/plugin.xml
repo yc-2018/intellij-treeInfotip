@@ -2,19 +2,23 @@
     <!-- 复刻版独立的插件 id，不能和原版 com.linkkou.plugin.intellij.assistant 相同：
          IDE 的更新检查是按 id 去 Marketplace 查的，沿用原 id 会被原版的构建"更新"掉 -->
     <id>com.github.yc556.treeinfotip</id>
-    <!-- 首次上传 Marketplace 时名字只能用拉丁字符：会校验 name，允许的只有字母、数字、空格和
-         .,+_-/:()#'&[]| 这几个符号，中日韩文字直接被拒（Plugin Verifier 1.393 起明确写成
-         "Plugin name must be in Latin characters"）。
-         条目建起来之后可以再改成带中文的「TreeInfotip Notes / 目录树备注」——作者另一个插件
-         sql-heading-folding 就是先纯英文首发建条目，再改中英文名靠 CI publishPlugin 发上去的，
-         详见 CLAUDE.md 的「Marketplace 的描述符校验」一节。所以现在这个纯拉丁名是为了过首传，
-         别在条目还没建出来之前就改回中文。
-         另外这里不能只写 TreeInfotip，Marketplace 的条目名要和原版区分开 -->
-    <name>TreeInfotip Notes</name>
+    <!-- 名字带中文的前提是**走 API 上传**：`<name>` 的拉丁字符限制属于 Plugin Verifier 的
+         structure 检查，放行的只有字母、数字、空格和 .,+_-/:()#'&[]|，中日韩文字直接被判
+         "contains invalid characters"。这条检查按通道区分、和是不是首次建条目无关——
+         网页后台上传 zip 会跑（5.2.0 就是这么被拒的），本地 runPluginVerifier 也会跑
+         （5.4.0 实测：直接判整个包 invalid，Scheduled verifications (0)，API 检查一个都不做），
+         但 `./gradlew publishPlugin` 走 Marketplace API 不跑，作者另一个插件
+         sql-heading-folding 就带着中文名从 1.0.4 发到了 1.1.8。
+         所以：这一版起只能用 CI 的 publishPlugin 发布，不能用网页上传；
+         本地要跑 verifier 查 API 问题，得先把这行临时改成纯拉丁的 TreeInfotip Notes 再打包。
+         详见 CLAUDE.md 的「Marketplace 的描述符校验」一节。
+         Marketplace 的展示名只从这里读，网页后台改不了，所以改名只能靠上传新版本。
+         另外名字里不能出现 JetBrains 品牌词和 emoji，长度上限 60、建议 30 以内 -->
+    <name>TreeInfotip Notes / 目录树备注</name>
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.3.2</version>
+    <version>5.4.0</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -54,6 +58,17 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.4.0</p>
+        <li>插件名改为中英文「TreeInfotip Notes / 目录树备注」（Marketplace 只在首次建条目时限定拉丁字符，条目已建好）</li>
+        <li>换掉两个图标：右键菜单「目录备注」分组用新的备注图标，侧边栏改用按插件 logo 重绘的 16×16 单色图标，浅色主题显示深灰、深色主题自动切白色</li>
+        <li>备注列表不再出现空白行：只设了颜色/图标/删除线、没写备注也没改显示名的规则不再列出；没写备注但覆盖了显示名称的，显示那个显示名</li>
+        <li>备注列表双击不会再没反应：路径已失效的、以及只按扩展名匹配的全项目规则，双击直接跳到 DirectoryV3.xml 里这条规则所在的行</li>
+        <li>Renamed the plugin to the bilingual "TreeInfotip Notes / 目录树备注" (Marketplace enforces Latin-only names when creating a listing, which already exists)</li>
+        <li>New icons: a dedicated icon for the "目录备注" context menu group, and a 16×16 monochrome tool window icon redrawn from the plugin logo, dark grey on light themes and white on dark ones</li>
+        <li>No more blank rows in the note list: rules that only set a color/icon/strikethrough are skipped, and rules with an overridden display name but no note now show that name</li>
+        <li>Double-clicking a note always does something now: dead paths and project-wide extension rules jump to the matching line in DirectoryV3.xml</li>
+      </ul>
        <ul>
         <p>5.3.2</p>
         <li>清掉 Marketplace 的 Plugin Verifier 报出的全部 9 处问题（5 处待删除 API、2 处已废弃 API、2 处内部 API），上传 5.3.1 时就是被这些卡住的</li>
@@ -226,7 +241,9 @@
              平台按 toolwindow.stripe.<id> 去资源包找标题，找不到就直接拿 id 当标题
              （com.intellij.toolWindow.ToolwindowKt#getStripeTitleSupplier）。
              所以这里的 id 既要唯一、又要能直接读，带空格是平台自己也在用的写法（如 Version Control） -->
-        <toolWindow id="TreeInfotip 备注" secondary="true" icon="AllIcons.General.Note" anchor="right"
+        <!-- 图标写 /icons/treeNote.svg，深色主题下平台会自动去找同目录的 treeNote_dark.svg，
+             不用也不能在这里声明第二个路径 -->
+        <toolWindow id="TreeInfotip 备注" secondary="true" icon="/icons/treeNote.svg" anchor="right"
                     factoryClass="com.plugins.infotip.gui.view.NoteTreeView"/>
         <toolWindow id="TreeInfotip XML" secondary="true" icon="AllIcons.FileTypes.Xml" anchor="bottom"
                     factoryClass="com.plugins.infotip.gui.view.XmlEditorToolWindow"/>
@@ -239,7 +256,9 @@
     <actions>
         <!-- action / group 的 id 也是 IDE 全局的，重名会被 ActionManager 拒绝注册；
              这些 id 不对用户显示（菜单文字来自 text 属性），所以统一加 TreeInfotip 前缀 -->
-        <group id="TreeInfotip.MenuGroup" text="目录备注" popup="true" icon="AllIcons.Actions.MenuPaste">
+        <!-- 图标用自带的 svg，不引 AllIcons：反射不到的 AllIcons 字段会在新版 IDE 上凭空消失，
+             历史事故是 AllIcons.Actions.Menu_paste 在 2026.2 被删，右键菜单整个不可用 -->
+        <group id="TreeInfotip.MenuGroup" text="目录备注" popup="true" icon="/icons/addNote.svg">
             <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="ReplaceInPath"/>
             <action id="TreeInfotip.DescriptionText" class="com.plugins.infotip.action.ActionDescriptionText"
                     text="添加文字备注"

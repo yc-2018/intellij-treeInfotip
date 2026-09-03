@@ -135,7 +135,7 @@ PresentationData：图标 / locationString / tooltip / presentableText / 文字�
 | 名字 | 在哪 | 撞了会怎样 |
 |---|---|---|
 | `<id>` = `com.github.yc556.treeinfotip` | `plugin.xml` | IDE 的更新检查按 id 去 Marketplace 查，沿用原 id 会被原版的构建静默"更新"掉 |
-| `<name>` = `TreeInfotip Notes` | `plugin.xml` | Marketplace 条目名要唯一。**只能用拉丁字符**，写中文上传会被拒，详见下面一节 |
+| `<name>` = `TreeInfotip Notes / 目录树备注` | `plugin.xml` | Marketplace 条目名要唯一。**首次建条目时只能用拉丁字符**，条目建出来之后才能改成中英文（5.4.0 起就是中英文），详见下面一节 |
 | `intellij.pluginName` = `TreeInfotip-Notes` | `build.gradle` | 它是 zip 根目录名，也就是装完后 `plugins/<这个名字>/`；和原版同名时后装的直接覆盖前一个的安装目录 |
 | action / group / toolWindow / notificationGroup 的 id | `plugin.xml` | 这些注册表是 IDE 全局的，重名会被拒绝注册。全部加了 `TreeInfotip` 前缀 |
 
@@ -158,12 +158,34 @@ action id 不对用户显示（菜单文字来自 `text=` 属性），改名只�
 
 上传 zip 时 Marketplace 会校验 `plugin.xml`，不过这一关就传不上去。踩过的两条：
 
-- **首次上传时 `<name>` 只能用拉丁字符**。放行的是字母、数字、空格和 `.,+_-/:()#'&[]|`，中日韩文字直接判"包含无效字符"。5.2.0 设的 `TreeInfotip 目录树备注` 就是这么被拒的（5.3.1 改成 `TreeInfotip Notes`）。Plugin Verifier 1.393 的发布说明把这条写死成 "Plugin name must be in Latin characters"。
+- **`<name>` 只能用拉丁字符**。放行的是字母、数字、空格和 `.,+_-/:()#'&[]|`，中日韩文字直接判"包含无效字符"。5.2.0 设的 `TreeInfotip 目录树备注` 就是这么被网页上传拒掉的（5.3.1 改成 `TreeInfotip Notes`）。Plugin Verifier 1.393 的发布说明把这条写死成 "Plugin name must be in Latin characters"。
 - **`<description>` 要以拉丁字符开头、正文至少 40 字**。正文里的中文没问题，现在开头那句 `TreeInfotip plugin for IntelliJ IDEs.` 正好满足，**改描述时别把中文段落挪到最前面**，emoji 放开头也会被拒。
 
-**条目建起来之后名字可以带中文**。作者另一个插件 `yc-2018/intellij-sql-heading-folding`（本机 `D:\myData\intellij-sql-heading-folding`）是实证：2026-08-09 用纯英文 `SQL Heading Folding` 在网页首发建条目，08-13 的 1.0.4 改成 `SQL Heading Folding / SQL 标题折叠`，之后一路发到 1.1.8 都带着中文名。所以顺序是**先用拉丁名把条目建出来，再改中英文名发新版本**，不是"中文永远不行"。
+#### 中文名到底行不行：分上传通道，不分首次/更新（5.4.0 实测）
 
-到底是"只有首次创建条目才校验名字"还是"网页上传校验、API 上传不校验"，这一个案例分不出来——它把两个变量一起变了（首次→更新、网页→API）。想改中文名就照它走过的路来：CI 里 `./gradlew publishPlugin`，token 从 `JETBRAINS_MARKETPLACE_TOKEN` 环境变量读。本仓库 `release.yml` 已经有这个步骤（挂在 `env.JETBRAINS_MARKETPLACE_TOKEN != ''` 后面），只差在 GitHub 仓库 Secrets 里加上 token。
+**这条校验属于 Plugin Verifier CLI 自己的 structure 检查，和"是不是首次建条目"无关。** 5.4.0 把 `<name>` 改成 `TreeInfotip Notes / 目录树备注` 之后本地跑 `runPluginVerifier`（1.410），直接判整个包无效、连 API 检查都不跑：
+
+```
+Plugin is invalid in build\distributions\TreeInfotip-Notes-5.4.0.zip:
+  Invalid plugin descriptor 'plugin.xml'. Name 'TreeInfotip Notes / 目录树备注' contains invalid characters.
+  Only the following characters are allowed: letters, digits, spaces, and .,+_-/:()#'&[]|
+Scheduled verifications (0)
+```
+
+条目 34046 早就存在、这一版是"更新"，照样被拒——所以之前"条目建起来之后名字就能带中文"的说法是错的，真正的分界是**上传通道**：
+
+| 通道 | 跑不跑这条 structure 检查 | 中文名 |
+|---|---|---|
+| 网页后台上传 zip | 跑 | 被拒（5.2.0 的实测） |
+| 本地 `runPluginVerifier` | 跑 | 直接判 invalid，API 检查全部跳过（5.4.0 的实测） |
+| `./gradlew publishPlugin`（Marketplace API） | 不跑 | 能过 |
+
+API 通道的实证是作者另一个插件 `yc-2018/intellij-sql-heading-folding`（本机 `D:\myData\intellij-sql-heading-folding`）：`<name>` 是 `SQL Heading Folding / SQL 标题折叠`，CI（`.github/workflows/build-release.yml:54`）**只有 `./gradlew publishPlugin`、没有 `runPluginVerifier`**，就这么从 1.0.4 一路发到了 1.1.8。
+
+所以想要中英文名，配套约束是硬的：
+
+- **必须走 CI 的 `publishPlugin`，不能用网页上传 zip。** 本仓库 `release.yml` 已经有这个步骤（挂在 `env.JETBRAINS_MARKETPLACE_TOKEN != ''` 后面），只差在 GitHub 仓库 Secrets 里加 token。
+- **本地想跑 `runPluginVerifier` 查 API 问题，得先把 `<name>` 临时改成纯拉丁再打包**，跑完再改回来。5.4.0 就是这么验的：拉丁名下 verifier 给出 `Compatible`、无任何 deprecated / internal 用法，然后把中文名改回去重新打包发布。别省这一步——5.3.1 就是因为 API 问题被打回的，而中文名会让 verifier 一个 API 都不查。
 
 Marketplace 的插件名始终从 `plugin.xml` 读，网页后台改不了，所以改名只能靠上传新版本。
 
@@ -208,6 +230,11 @@ Marketplace 的插件名始终从 `plugin.xml` 读，网页后台改不了，所
 - `sourceCompatibility = targetCompatibility = 17`。**不要提到 21**：`platformVersion=2022.3.2` 自带的 JBR 是 17，21 的字节码在 `runIde` 沙箱和用户机器上都加载不了；真要上 21 得先把 `platformVersion` 拉到 2025.x，那会一并撞上 `ContentFactory.SERVICE` 这类已标记删除的 API。
 - **新版平台的 EDT 不再隐式持有读锁**，Swing 监听器里直接碰 PSI 或索引会抛 `Read access is allowed from inside read-action only`（`ThreadingAssertions.assertReadAccess`）。2022.3 上不报，2024.1 起报——`NoteTreeView` 的双击跳转就是这么在 2026.2 上炸的（5.3.0 修）。补法是自己包一层读操作，用 `ApplicationManager.getApplication().runReadAction(Runnable)`：**不能用报错信息里推荐的 `WriteIntentReadAction`**（那个类 2024.1 才有，`since-build=223` 编不过），**也不能用 `ReadAction.run(ThrowableRunnable)`**（那个重载已废弃，Plugin Verifier 会报出来，5.3.2 换掉）。`TreesUtils.Navigation` 里 `findDirectory`/`findFile` 和 `selectPsiElement` 包在同一个 read action 里，因为后者内部还要再读一次 PSI 拿 `VirtualFile`。
 - 侧边栏（`NoteTreeView`）的路径失效检查和类型图标都在 `buildNode` 里算一次、缓存在 `MyTreeNode` 的 `missing` / `icon` 字段上，**不要挪进渲染器**：`customizeCellRenderer` 每帧对每个可见行都会调一次，碰 VFS 和 `FileTypeManager` 太贵。代价是在 IDE 外面删文件不会自动变红，靠双击根节点重建列表刷新；查存在性走 `TreesUtils.findProjectFile`（`refreshIfNeeded=false`），宁可漏报也不要把好路径误标成失效。另外 `root.add(...)` 不发 model 事件，`DefaultTreeModel.reload()` 必须在加完子节点**之后**调（原代码是先 reload 再 add，新节点得等下一次重绘才出来）。
+- 侧边栏列表**不列没有文字可显示的规则**（5.4.0 起）：`label()` 是 `title` → `presentableText` 兜底，两个都空且没有 extension 后缀时返回空串，`buildNode` 直接返回 `null`。只设了颜色/图标/删除线的规则就属于这一类，列出来是一整行空白，认不出是哪条也点不动，而它们的入口本来就在项目树的右键菜单上。
+- 侧边栏双击**一定要有反应**（5.4.0 起）：`navigate()` 先自己查一次 VFS，能落到真实文件就 `TreesUtils.Navigation`，否则跳 `DirectoryV3.xml` 里这条规则所在的行。这里**不要看 `MyTreeNode.isMissing()`**——那个状态是建节点时算的，建完之后在 IDE 外面删文件不会刷新，照它判断会把已经失效的当成有效去跳，又变成没反应。跳 XML 的偏移量取自解析时存在 `XmlEntity.tag` 上的 `XmlTag`（`getTextOffset()`），行号一定对得上，不用自己在文本里找；`tag` 失效时退到 `XmlFileUtils.getXmlFile(project)` 的文件开头。读 PSI 那段要包在 `runReadAction` 里，`new OpenFileDescriptor(project, file, offset).navigate(true)` 要在读操作**外面**调。3 参构造和 `navigate(boolean)` 在 2022.3.2 和 2026.2.1 上都不带任何注解；同类里 `IntSupplier` 重载、`navigateInEditor`、`navigateIn` 在 2026.2 是 internal，别用。
+- **工具窗口和菜单图标不引 `AllIcons`，用仓库自带的 svg**（5.4.0 起）。理由和历史事故一样：反射不到的 `AllIcons` 字段会在新版 IDE 上凭空消失。两条约定：
+  - **主题适配靠 `_dark` 文件名后缀，不写代码**。`icons/treeNote.svg`（`#6C707E`，浅色主题的标准图标灰）+ `icons/treeNote_dark.svg`（`#FFFFFF`），`plugin.xml` 里只声明 `/icons/treeNote.svg` 一个路径，平台自己去找 `_dark` 的那个。改图形时两个文件都要改。彩色图标（`icons/addNote.svg`）不需要 `_dark` 变体。工具窗口图标必须是单色 16×16，彩色 logo 缩到 16 会糊。
+  - **SVG 根标签声明的 `width` / `height` 决定逻辑尺寸**，平台的 SvgLoader 按它算。外面拿来的图常常是 128×128，只改这两个属性成 16 就行，`viewBox` 不用动（`addNote.svg` 的 viewBox 还是 1024），不改会把菜单行整个撑高。
 - 图标下拉框没有「不设置」选项（`IconsUtils.ICONS` 纯反射 `AllIcons` 生成），所以颜色/图标对话框一点确定就必然写入一个 `icon` 属性。这是既有行为。
 - **量图标尺寸不能用裸 JVM 反射 `getIconWidth()`**。没有 `Application` 时 `CachedImageIcon` 加载不了真图，会退化成 16×16 的空图标，量出来「全都是 16×16」，看着像没问题其实什么都没量到。要量真实尺寸就直接读平台 jar 里 SVG 根标签声明的 `width` / `height`（2022.3 共 5894 张去重 SVG，其中 1221 张不是 16×16；`AllIcons` 暴露的 1080 个字段里有 50 个长边超过 16，最大 48×48）。要验缩放逻辑就自己造假 `Icon`（只重写 `getIconWidth` / `getIconHeight`）去打 `IconsUtils.fit`，不依赖 `Application`。
 - 缩图标别用 `IconUtil.resizeSquared`：它的比例**只按宽算**（`IconUtil$4.paintIcon` 里 `ratio = size / source.getIconWidth()`），`AllIcons` 里有 `2×19`、`32×15`、`18×22` 这类非正方形的，按宽算会把 `2×19` 放大成 `16×152`。要按 `max(宽, 高)` 自己算倍率交给 `IconUtil.scale(icon, null, factor)`（`OBJ_SCALE` 相对倍率，平台会叠在 DPI 缩放之上）。
