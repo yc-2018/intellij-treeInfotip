@@ -121,7 +121,7 @@ PresentationData：图标 / locationString / tooltip / presentableText / 文字�
 | 名字 | 在哪 | 撞了会怎样 |
 |---|---|---|
 | `<id>` = `com.github.yc556.treeinfotip` | `plugin.xml` | IDE 的更新检查按 id 去 Marketplace 查，沿用原 id 会被原版的构建静默"更新"掉 |
-| `<name>` = `TreeInfotip 目录树备注` | `plugin.xml` | Marketplace 条目名要唯一 |
+| `<name>` = `TreeInfotip Notes` | `plugin.xml` | Marketplace 条目名要唯一。**只能用拉丁字符**，写中文上传会被拒，详见下面一节 |
 | `intellij.pluginName` = `TreeInfotip-Notes` | `build.gradle` | 它是 zip 根目录名，也就是装完后 `plugins/<这个名字>/`；和原版同名时后装的直接覆盖前一个的安装目录 |
 | action / group / toolWindow / notificationGroup 的 id | `plugin.xml` | 这些注册表是 IDE 全局的，重名会被拒绝注册。全部加了 `TreeInfotip` 前缀 |
 
@@ -139,6 +139,17 @@ action id 不对用户显示（菜单文字来自 `text=` 属性），改名只�
 - 真正的代价是每次重绘算两遍，而且两个装饰入口的执行顺序不定，**旧版跑在后面时会 `clearText()` 掉新版才有的覆盖显示名称等设置**。
 - 检测到冲突时**不要**顺手跳过自己的装饰：跳过等于把渲染完全交给旧版，用户必然看不到新特性；两边都跑最坏也就是退化成旧版的效果，是弱优于跳过的。
 - 也没有用 `<incompatible-with>`（2022.3 确实支持，`XmlReader` 解析进 `RawPluginDescriptor.incompatibilities`，`PluginSetBuilder` 执行）。它直接让插件不加载，太硬；而且它和 `com.intellij.pluginReplacement` 互斥——插件都不加载了，自然也注册不了那个 EP。
+
+### Marketplace 的描述符校验（5.3.1 起）
+
+上传 zip 时 Marketplace 会校验 `plugin.xml`，不过这一关就传不上去。踩过的两条：
+
+- **`<name>` 只能用拉丁字符**。放行的是字母、数字、空格和 `.,+_-/:()#'&[]|`，中日韩文字直接判"包含无效字符"。5.2.0 设的 `TreeInfotip 目录树备注` 就是这么被拒的（5.3.1 改成 `TreeInfotip Notes`）。Plugin Verifier 1.393 的发布说明把这条写死成 "Plugin name must be in Latin characters"。
+- **`<description>` 要以拉丁字符开头、正文至少 40 字**。正文里的中文没问题，现在开头那句 `TreeInfotip plugin for IntelliJ IDEs.` 正好满足，**改描述时别把中文段落挪到最前面**，emoji 放开头也会被拒。
+
+线上能看到中文名的插件不代表现在还能这么起名：这条校验是后加的，已上架的条目不会被回溯检查。也**没有"过校验 + 显示中文名"的折中**——Marketplace 的插件名始终从 `plugin.xml` 读，网页后台改不了，只能靠上传新版本改。
+
+顺带还有几条软约束（来自 Marketplace 的命名与审核指南）：名字里不能出现 `JetBrains` 或其他 JetBrains 品牌词，不建议带 `Plugin`、`Support`、`Integration` 这类词，不能用 emoji，长度上限 60、建议控制在 30 以内。
 
 ## 已知约束
 

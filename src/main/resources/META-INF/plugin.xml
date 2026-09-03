@@ -2,11 +2,17 @@
     <!-- 复刻版独立的插件 id，不能和原版 com.linkkou.plugin.intellij.assistant 相同：
          IDE 的更新检查是按 id 去 Marketplace 查的，沿用原 id 会被原版的构建"更新"掉 -->
     <id>com.github.yc556.treeinfotip</id>
-    <name>TreeInfotip 目录树备注</name>
+    <!-- 名字只能用拉丁字符：Marketplace 上传时会校验 name，允许的只有字母、数字、空格和
+         .,+_-/:()#'&[]| 这几个符号，中日韩文字直接被拒（Plugin Verifier 1.393 起明确写成
+         "Plugin name must be in Latin characters"）。而且 Marketplace 的插件名只能由
+         plugin.xml 驱动，网页后台改不了，所以没有"过校验 + 显示中文名"的折中办法。
+         中文说明放在 description 里（那条规则只要求开头是拉丁字符、正文至少 40 字）。
+         另外这里不能只写 TreeInfotip，Marketplace 的条目名要和原版区分开 -->
+    <name>TreeInfotip Notes</name>
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.3.0</version>
+    <version>5.3.1</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -46,6 +52,13 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.3.1</p>
+        <li>插件名从「TreeInfotip 目录树备注」改为「TreeInfotip Notes」：Marketplace 上传时校验 plugin.xml 的 name，只放行字母、数字、空格和 .,+_-/:()#'&amp;[]|，中文字符会被拒（Plugin Verifier 1.393 起写明必须是拉丁字符）</li>
+        <li>Marketplace 的插件名只能由 plugin.xml 驱动、网页后台改不了，所以中文名没有折中办法；中文说明仍保留在插件描述与更新日志里，IDE 插件列表里显示的名字变成 TreeInfotip Notes</li>
+        <li>Renamed the plugin to "TreeInfotip Notes": Marketplace validates the plugin.xml name against letters, digits, spaces and .,+_-/:()#'&amp;[]| only, and rejects CJK characters</li>
+        <li>The Marketplace display name comes from plugin.xml and cannot be overridden on the listing page, so the Chinese wording stays in the description and change notes instead</li>
+      </ul>
        <ul>
         <p>5.3.0</p>
         <li>修复在 2024.1 及更新的 IDE（含 2026.x）上双击备注列表跳转时崩溃：报错是「Read access is allowed from inside read-action only」，新版平台的 EDT 不再隐式持有读锁，PSI 查找现在包在 ReadAction 里</li>
