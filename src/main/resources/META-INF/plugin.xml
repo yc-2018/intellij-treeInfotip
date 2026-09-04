@@ -19,7 +19,7 @@
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.6.0</version>
+    <version>5.7.0</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -59,6 +59,15 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.7.0</p>
+        <li>「目录备注」列表的右键菜单整行都能点：以前只有点在备注文字上才弹得出来，点行尾的空白处没反应</li>
+        <li>「目录备注」会标出重复的规则：path 和 extension 都和前面某条一样的规则永远不会生效（同优先级时写在前面的那条赢），这种规则标灰显示，工具栏新增「清理重复规则」一键删掉它们，在生效的那条会保留，项目树的显示不变</li>
+        <li>重复规则只标不删，不在读取配置时静默去重：DirectoryV3.xml 在项目根目录里、会进版本库，插件不背着人重写它</li>
+        <li>Right-clicking a row in the 目录备注 list now works anywhere on the row; previously the menu only opened when the pointer was over the label text</li>
+        <li>The 目录备注 list now flags duplicate rules: a rule whose path and extension both match an earlier one can never take effect (the first rule wins among equal priorities), so it is greyed out, and a new "清理重复规则" toolbar button removes all of them while keeping the rule that is actually in effect — the project tree looks exactly the same afterwards</li>
+        <li>Duplicates are only flagged, never silently deduplicated at parse time: DirectoryV3.xml lives in the project root and goes into version control, so the plugin does not rewrite it behind your back</li>
+      </ul>
        <ul>
         <p>5.6.0</p>
         <li>侧边栏「TreeInfotip 备注」新增「说明」tab：右键菜单七项分别做什么、DirectoryV3.xml 的九个参数怎么写、命中优先级怎么算，都在这一页里，工具栏上还有一个按钮直接打开配置文件</li>

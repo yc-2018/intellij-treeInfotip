@@ -23,7 +23,7 @@ import java.util.List;
  * 顶部连续的单行注释（空行即断开）。
  * </p>
  *
- * @author lk
+ * @author yc556&claude-opus-5
  * @version 1.0
  */
 public class PsiCommentUtils {

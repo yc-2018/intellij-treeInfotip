@@ -36,10 +36,14 @@ import javax.swing.JTree;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
+import java.awt.Component;
+import java.awt.Rectangle;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * A <code>NoteTreeView</code> Class
@@ -54,6 +58,11 @@ import java.util.List;
  * <p>
  * 路径已失效的规则排在最前面。项目树上已经没有它们的节点了，这个列表是用户唯一能发现并清掉
  * 它们的地方，所以还给了工具栏上的「清除失效路径」一键删。
+ * </p>
+ * <p>
+ * 被前面同「路径 + 扩展名」的规则盖住、永远不会生效的那些标灰显示（多半是手改配置时复制粘贴
+ * 留下的），对应工具栏上的「清理重复规则」。只标不删：这文件在用户项目根目录里，会进版本库，
+ * 插件不背着人重写它。
  * </p>
  * <p>
  * 5.5.0 起本类不再是 {@code ToolWindowFactory}——工具窗口有两个 tab 了，工厂搬去
@@ -79,6 +88,15 @@ public class NoteTreeView extends Tree {
      * 本次 {@link #reload()} 里路径已失效的那些规则，「清除失效路径」直接删它们
      */
     private final List<XmlEntity> missingEntities = new ArrayList<>();
+
+    /**
+     * 本次 {@link #reload()} 里被前面同键规则盖住、永远不会生效的那些规则，「清理重复规则」直接删它们
+     * <p>
+     * 这里收的是<b>全部</b>重复规则，包含没有文字、没进列表的那些：它们在列表里看不见，
+     * 但在文件里照样占着位置，一键清理时要一起带走。
+     * </p>
+     */
+    private final List<XmlEntity> shadowedEntities = new ArrayList<>();
 
     private NoteTreeView(@NotNull Project project) {
         super(new DefaultMutableTreeNode("备注列表"));
@@ -112,6 +130,7 @@ public class NoteTreeView extends Tree {
         final DefaultActionGroup group = new DefaultActionGroup();
         group.add(new RefreshAction());
         group.add(new ClearMissingAction());
+        group.add(new ClearShadowedAction());
         final ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar(PLACE_TOOLBAR, group, true);
         //不设 targetComponent 平台会警告，action 的 update 也拿不到正确的 DataContext
         toolbar.setTargetComponent(this);
@@ -119,17 +138,23 @@ public class NoteTreeView extends Tree {
     }
 
     /**
-     * 右键菜单：置顶 + 删除
+     * 右键菜单：置顶 + 删除，整行都能点，不只是文字上
      * <p>
-     * 右键点到的那一行会先被选上，所以 action 里直接读选中项就行。做这件事的是 {@link Tree}
-     * 自己的 {@code MyMouseListener}：右键落在<b>没选中</b>的行上就把选中改成那一行，落在
-     * <b>已选中</b>的行上则整批多选原样保留（{@code getSelectionPaths()} 里找到就直接
-     * return），所以 Ctrl 多选之后右键，{@link #selectedEntities()} 拿到的仍是整批。
-     * 它在 {@code Tree} 的构造里就注册了，比这里装的 popup handler 先跑。
+     * 自己继承 {@link PopupHandler} 而不用 {@code installFollowingSelectionTreePopup}：那个方法
+     * 的判据是 {@code getPathForLocation(x, y) != null && 这一行在选中里}，前半句是<b>认横坐标</b>
+     * 的——点在标签文字右边的空白处返回 {@code null}，菜单就弹不出来。基类只负责
+     * {@code isPopupTrigger()} 的跨平台差异（Windows 在松开时触发、X11 / macOS 在按下时），
+     * 剩下的判定全在这里，所以换掉它没有副作用。
      * </p>
      * <p>
-     * {@code installFollowingSelectionTreePopup} 自己只负责「点到选中的行才弹菜单」。别换成
-     * {@code PopupHandler.installPopupHandler(...)}，那几个重载在新版平台上全带删除标记，
+     * 选中本身<b>不用管</b>：{@link Tree} 自己的 {@code MyMouseListener} 已经用
+     * {@code getClosestPathForLocation} 处理好了——右键落在没选中的行上就把选中改成那一行，
+     * 落在已选中的行上则整批多选原样保留，所以 Ctrl 多选之后右键，{@link #selectedEntities()}
+     * 拿到的仍是整批。它在 {@code Tree} 的构造里就注册了，比这里装的监听先跑。这里再兜一次
+     * {@code setSelectionRow} 只为极端情况（选中被别处清掉）留个底。
+     * </p>
+     * <p>
+     * 别换回 {@code PopupHandler.installPopupHandler(...)}，那几个重载在新版平台上全带删除标记，
      * Plugin Verifier 会报出来。
      * </p>
      */
@@ -137,7 +162,39 @@ public class NoteTreeView extends Tree {
         final DefaultActionGroup group = new DefaultActionGroup();
         group.add(new MoveToTopAction());
         group.add(new DeleteAction());
-        PopupHandler.installFollowingSelectionTreePopup(this, group, PLACE_POPUP);
+        addMouseListener(new PopupHandler() {
+            @Override
+            public void invokePopup(Component comp, int x, int y) {
+                final int row = rowAt(y);
+                if (row < 0) {
+                    return;
+                }
+                if (!isRowSelected(row)) {
+                    setSelectionRow(row);
+                }
+                ActionManager.getInstance().createActionPopupMenu(PLACE_POPUP, group)
+                        .getComponent().show(comp, x, y);
+            }
+        });
+    }
+
+    /**
+     * 只看纵坐标落在哪一行，行尾的空白处也算这一行
+     * <p>
+     * {@code getRowForLocation} 认横坐标，标签文字之外一律返回 -1，所以走
+     * {@code getClosestRowForLocation}（基本只看 y）再用 {@link #getRowBounds} 卡一下范围：
+     * 不卡的话点在最后一行下方的大片空白上会算成最后一行，右键就成了对着看不见的行操作。
+     * </p>
+     *
+     * @return 行号，纵坐标不在任何一行上时返回 -1
+     */
+    private int rowAt(int y) {
+        final int row = getClosestRowForLocation(0, y);
+        if (row < 0) {
+            return -1;
+        }
+        final Rectangle bounds = getRowBounds(row);
+        return null != bounds && y >= bounds.y && y < bounds.y + bounds.height ? row : -1;
     }
 
     /**
@@ -170,19 +227,32 @@ public class NoteTreeView extends Tree {
      * <p>
      * 失效的必须让用户一眼看见：项目树上已经没有它们的节点了，不排上去就得自己往下翻。
      * </p>
+     * <p>
+     * 顺手按 {@link TreesUtils#ruleKey} 查重：键相同的第二条及以后的规则被前面那条完全盖住，
+     * 一辈子不会生效（三类规则都是先到先得），标灰显示并攒进 {@link #shadowedEntities}。
+     * 只标不删——文件是用户手改的，静默重写不合适。
+     * </p>
      */
     private void reload() {
         final DefaultTreeModel model = (DefaultTreeModel) getModel();
         final DefaultMutableTreeNode root = (DefaultMutableTreeNode) model.getRoot();
         root.removeAllChildren();
         missingEntities.clear();
+        shadowedEntities.clear();
         final List<MyTreeNode> missing = new ArrayList<>();
         final List<MyTreeNode> alive = new ArrayList<>();
         final List<XmlEntity> entities = XmlStorage.getXmlEntity(project);
         if (null != entities) {
+            final Set<String> seen = new HashSet<>();
             for (XmlEntity entity : entities) {
-                final MyTreeNode node = buildNode(project, entity);
-                //没有文字可显示、路径又还在的规则不进列表，见 buildNode
+                //键要在建节点之前登记：没有文字的规则不进列表，但它照样占着这条键，
+                //后面同键的那条确实不生效
+                final boolean shadowed = !seen.add(TreesUtils.ruleKey(entity));
+                if (shadowed) {
+                    shadowedEntities.add(entity);
+                }
+                final MyTreeNode node = buildNode(project, entity, shadowed);
+                //没有文字可显示、路径又还在、也没被盖住的规则不进列表，见 buildNode
                 if (null == node) {
                     continue;
                 }
@@ -301,7 +371,7 @@ public class NoteTreeView extends Tree {
     }
 
     /**
-     * 建一个节点，同时把图标和路径失效状态算好存进去
+     * 建一个节点，同时把图标、路径失效和被覆盖状态算好存进去
      * <p>
      * 图标表示这条规则作用在什么上（目录 / 哪类文件 / 路径已失效），不是用户自己配的那个图标——
      * 配的图标在项目树上已经看得到，摆这里反而会盖掉目录和文件的区分。
@@ -310,9 +380,10 @@ public class NoteTreeView extends Tree {
      * 存不存在只在这里查一次，不放渲染器里：渲染器每帧对每个可见行都要调一次，不能碰 VFS。
      * </p>
      *
-     * @return 没有任何文字可显示、路径又还在的规则返回 {@code null}，调用方跳过不加进列表
+     * @param shadowed 前面已经有一条同键的规则了，这条不会生效，见 {@link TreesUtils#ruleKey}
+     * @return 没有任何文字可显示、路径又还在、也没被盖住的规则返回 {@code null}，调用方跳过不加进列表
      */
-    private static MyTreeNode buildNode(Project project, XmlEntity entity) {
+    private static MyTreeNode buildNode(Project project, XmlEntity entity, boolean shadowed) {
         final String extension = entity.getExtension();
         final boolean typeRule = !trimmed(extension).isEmpty();
         final boolean scoped = !trimmed(entity.getPath()).isEmpty();
@@ -321,11 +392,12 @@ public class NoteTreeView extends Tree {
         final boolean projectWide = typeRule && !scoped;
         final VirtualFile file = projectWide ? null : TreesUtils.findProjectFile(project, entity.getPath());
         final boolean missing = !projectWide && null == file;
-        final String label = label(entity, typeRule, missing);
+        //被盖住的和失效的一样：不显示就等于用户在哪都发现不了它，所以没写文字时拿路径兜底
+        final String label = label(entity, typeRule, missing || shadowed);
         if (label.isEmpty()) {
             return null;
         }
-        final MyTreeNode node = new MyTreeNode(label).setUserEntity(entity);
+        final MyTreeNode node = new MyTreeNode(label).setUserEntity(entity).setShadowed(shadowed);
         if (missing) {
             return node.setMissing(true).setIcon(fit(AllIcons.General.Error));
         }
@@ -363,13 +435,16 @@ public class NoteTreeView extends Tree {
      * 两个都没写的规则（只设了颜色 / 图标 / 删除线的那些）分两种情况：
      * </p>
      * <ul>
-     *   <li><b>路径还在的不进列表</b>：效果在项目树上本来就看得见，列表里却只有空白一行，
+     *   <li><b>看得见效果的不进列表</b>：效果在项目树上本来就看得见，列表里却只有空白一行，
      *   认不出是哪条也点不动，而它的入口就在项目树的右键菜单上。</li>
-     *   <li><b>路径失效的必须进列表</b>：项目树上连节点都没有了，列表是用户唯一能发现并
-     *   清掉它的地方。没有文字可显示，就拿它配的路径当标题。</li>
+     *   <li><b>路径失效或被覆盖的必须进列表</b>：前者在项目树上连节点都没有了，后者压根不生效，
+     *   列表是用户唯一能发现并清掉它的地方。没有文字可显示，就拿它配的路径当标题。</li>
      * </ul>
+     *
+     * @param forceShow 这条规则在项目树上看不到效果（路径失效或被前面同键的规则盖住），
+     *                  没写文字也得显示出来
      */
-    private static String label(XmlEntity entity, boolean typeRule, boolean missing) {
+    private static String label(XmlEntity entity, boolean typeRule, boolean forceShow) {
         String text = trimmed(entity.getTitle());
         if (text.isEmpty()) {
             text = trimmed(entity.getPresentableText());
@@ -380,12 +455,12 @@ public class NoteTreeView extends Tree {
             if (!text.isEmpty()) {
                 return text + "  [" + suffix + "]";
             }
-            return missing ? suffix : "";
+            return forceShow ? suffix : "";
         }
         if (!text.isEmpty()) {
             return text;
         }
-        return missing ? trimmed(entity.getPath()) : "";
+        return forceShow ? trimmed(entity.getPath()) : "";
     }
 
     private static String trimmed(String value) {
@@ -411,14 +486,16 @@ public class NoteTreeView extends Tree {
      * 这里再显式刷一次是为了兜住「XML 里本来就没有这条标签」的情况——那时文件没变、
      * 回调不会来，但列表得把它去掉。
      * </p>
+     *
+     * @param title 少删了几条时弹的那个提示框的标题，跟着触发它的按钮走
      */
-    private void remove(List<XmlEntity> targets) {
+    private void remove(List<XmlEntity> targets, String title) {
         final int removed = XmlStorage.removeByTag(project, targets);
         reload();
         if (removed < targets.size()) {
             //标签失效（文件被外部改过、还没重新解析完）时会少删，说清楚让用户刷新后重试
             Messages.showDialog(project, "有 " + (targets.size() - removed) + " 条没能删掉，配置文件可能刚被改过，请刷新后重试",
-                    "清除失效路径", new String[]{"知道了"}, 0, Messages.getWarningIcon());
+                    title, new String[]{"知道了"}, 0, Messages.getWarningIcon());
         }
     }
 
@@ -461,7 +538,40 @@ public class NoteTreeView extends Tree {
             if (!confirm("确定要删除这 " + targets.size() + " 条路径已失效的规则吗？", "清除失效路径")) {
                 return;
             }
-            remove(targets);
+            remove(targets, "清除失效路径");
+        }
+    }
+
+    /**
+     * 工具栏上的「清理重复规则」，一次删掉列表里标灰的全部规则
+     * <p>
+     * 删的是「路径 + 扩展名」都和前面某条一样的第二条及以后（见 {@link TreesUtils#ruleKey}），
+     * 真正在生效的那条第一名一定留着，所以清理前后项目树的显示<b>完全不变</b>。
+     * </p>
+     * <p>
+     * 之所以要用户按一下、不在解析时自动去重：{@code DirectoryV3.xml} 躺在用户项目根目录里，
+     * 是可以手改也会进版本库的文件，插件不该背着人重写它。
+     * </p>
+     */
+    private class ClearShadowedAction extends AnAction {
+
+        ClearShadowedAction() {
+            super("清理重复规则", "删掉被前面同路径规则盖住、永远不会生效的那些规则", AllIcons.Actions.Copy);
+        }
+
+        @Override
+        public void actionPerformed(@NotNull AnActionEvent e) {
+            //先拷一份：removeByTag 会存盘，存盘回调里的 reload() 把 shadowedEntities 清空了
+            final List<XmlEntity> targets = new ArrayList<>(shadowedEntities);
+            if (targets.isEmpty()) {
+                Messages.showInfoMessage(project, "当前没有重复的规则", "清理重复规则");
+                return;
+            }
+            if (!confirm("有 " + targets.size() + " 条规则和前面某条的路径、扩展名完全一样，"
+                    + "永远不会生效。确定要删掉它们吗？\n（在生效的那条会保留，项目树的显示不会变）", "清理重复规则")) {
+                return;
+            }
+            remove(targets, "清理重复规则");
         }
     }
 
@@ -486,7 +596,7 @@ public class NoteTreeView extends Tree {
             if (!confirm(message, "删除备注")) {
                 return;
             }
-            remove(targets);
+            remove(targets, "删除备注");
         }
     }
 
@@ -522,9 +632,12 @@ public class NoteTreeView extends Tree {
     }
 
     /**
-     * 备注前面画类型图标，指向的路径已经不存在的整行标红
+     * 备注前面画类型图标，指向的路径已经不存在的整行标红，被前面同键规则盖住的整行标灰
      * <p>
      * 根节点不可见（{@code rootVisible=false}），所以不是 {@link MyTreeNode} 的节点直接跳过。
+     * </p>
+     * <p>
+     * 失效优先于被覆盖：一条既失效又重复的规则先按红的显示，反正两种情况都该删。
      * </p>
      */
     private static class NoteCellRenderer extends ColoredTreeCellRenderer {
@@ -541,6 +654,9 @@ public class NoteTreeView extends Tree {
             if (node.isMissing()) {
                 append(text, SimpleTextAttributes.ERROR_ATTRIBUTES);
                 append("  路径已失效（双击定位到 XML）", SimpleTextAttributes.GRAYED_ATTRIBUTES);
+            } else if (node.isShadowed()) {
+                append(text, SimpleTextAttributes.GRAYED_ATTRIBUTES);
+                append("  被前面同路径的规则盖住，不生效", SimpleTextAttributes.GRAYED_ATTRIBUTES);
             } else {
                 append(text, SimpleTextAttributes.REGULAR_ATTRIBUTES);
             }

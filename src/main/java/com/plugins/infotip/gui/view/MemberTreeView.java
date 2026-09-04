@@ -64,7 +64,7 @@ import java.util.List;
  * 而且不用在 {@code plugin.xml} 里加任何 {@code <depends>}。
  * </p>
  *
- * @author lk
+ * @author yc556&claude-opus-5
  * @version 1.0
  */
 public class MemberTreeView extends Tree {

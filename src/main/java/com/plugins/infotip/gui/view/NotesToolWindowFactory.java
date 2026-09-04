@@ -27,7 +27,7 @@ import org.jetbrains.annotations.NotNull;
  * 三个 tab 都不加 {@code setCloseable(true)}——关掉之后没有入口再打开，只能重启 IDE。
  * </p>
  *
- * @author lk
+ * @author yc556&claude-opus-5
  * @version 1.0
  */
 public class NotesToolWindowFactory implements ToolWindowFactory {

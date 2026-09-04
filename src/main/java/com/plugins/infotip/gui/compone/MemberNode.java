@@ -15,7 +15,7 @@ import javax.swing.tree.DefaultMutableTreeNode;
  * Structure View 给的那个，和 IDE 自带的结构视图看起来一致。
  * </p>
  *
- * @author lk
+ * @author yc556&claude-opus-5
  * @version 1.0
  */
 public class MemberNode extends DefaultMutableTreeNode {
