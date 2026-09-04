@@ -155,6 +155,17 @@ PresentationData：图标 / locationString / tooltip / presentableText / 文字�
 
 收集上方注释要**分两步**，因为不同语言把注释挂在不同地方：Java 的 JavaDoc、Kotlin 的 KDoc 是方法元素**自己的第一个子节点**，而 JS / TS / Go 里多半是方法的**前一个兄弟**。所以先扫自己的头部子节点，一条都没有再用 `PsiTreeUtil.prevLeaf` 逐个叶子往前走。往前走时**必须用 `PsiTreeUtil.getParentOfType(leaf, PsiComment.class, false)` 把叶子抬回整条注释**——JSDoc 在 PSI 里是复合元素，直接拿叶子只能拿到 `/**` 这几个字符。
 
+**但这两步都得先经过 `carrier(element)` 往上抬一层**（5.5.1 加的）。结构视图给的元素不一定是注释挂靠的那一层，TS / TSX 的箭头函数组件是最典型的反例：
+
+```
+/** 承运商招募报名审核工作台。 */
+const CarrierRecruitRegPage: React.FC = () => {}
+```
+
+结构视图给的是 **`JSFunctionExpression`（箭头函数）**，JSDoc 挂在整条 `JSVarStatement` 上，中间隔着 `const CarrierRecruitRegPage: React.FC =` 一串 token。老逻辑在 `leadingComments` 第二步碰到第一个非注释叶子（`=`）就 `break`，所以这三种写法一条注释都读不出来：`const X = () => {}`（箭头函数）、`const x = {...}`（对象字面量变量）、多行 JSDoc + 箭头函数。
+
+`carrier` 往上走的**唯一条件是「父节点的开头和当前元素在同一行」**（`sameLineStart`），层数上限 `MAX_LIFT = 4`。选这条判据的原因是它语言无关又天然安全：Java 里类的第一个方法，`class X {` 到方法之间必然有换行，所以抬不上去，类的 JavaDoc 不会被认成方法的注释。`sameLineStart` 逐叶子往前走而不是切 `getText()`（父节点是个类时太贵），并且**半路遇到注释就当作已经到开头**——少了这一条，JSDoc 作为语句第一个子节点的那种挂法会因为多行 JSDoc 里的换行被判成跨行，白抬一趟。已知的误报是挤在一行里的对象字面量 `{a: 1, b: 2}`，属性会抬到字面量本身，宁可多显示一句也不要少显示。
+
 `clean()` 里 `@param` / `@return` 这类标签行单独攒一份：正文有内容就只要正文，正文全是标签才退回去用它们，总比显示空白好。显示长度上限 `MAX_LENGTH = 120`。
 
 ### 回调注册表
@@ -262,6 +273,7 @@ Marketplace 的插件名始终从 `plugin.xml` 读，网页后台改不了，所
 - `plugin.xml` 声明 `since-build="223"`，和编译平台 2022.3.2（`gradle.properties` 的 `platformVersion`）对齐，所以下限不再是「谎报」。但**上限没有**：`build.gradle` 里 `updateSinceUntilBuild = false` 是刻意的，不能写 `until-build`，否则新版 IDE 装不上。代价是新 IDE 删掉的 API 只能在运行期暴露——反射拿到的 `AllIcons` 字段名就可能凭空消失（历史事故见上）。
 - `sourceCompatibility = targetCompatibility = 17`。**不要提到 21**：`platformVersion=2022.3.2` 自带的 JBR 是 17，21 的字节码在 `runIde` 沙箱和用户机器上都加载不了；真要上 21 得先把 `platformVersion` 拉到 2025.x，那会一并撞上 `ContentFactory.SERVICE` 这类已标记删除的 API。
 - **新版平台的 EDT 不再隐式持有读锁**，Swing 监听器里直接碰 PSI 或索引会抛 `Read access is allowed from inside read-action only`（`ThreadingAssertions.assertReadAccess`）。2022.3 上不报，2024.1 起报——`NoteTreeView` 的双击跳转就是这么在 2026.2 上炸的（5.3.0 修）。补法是自己包一层读操作，用 `ApplicationManager.getApplication().runReadAction(Runnable)`：**不能用报错信息里推荐的 `WriteIntentReadAction`**（那个类 2024.1 才有，`since-build=223` 编不过），**也不能用 `ReadAction.run(ThrowableRunnable)`**（那个重载已废弃，Plugin Verifier 会报出来，5.3.2 换掉）。`TreesUtils.Navigation` 里 `findDirectory`/`findFile` 和 `selectPsiElement` 包在同一个 read action 里，因为后者内部还要再读一次 PSI 拿 `VirtualFile`。**要往外带值就用一元数组 + 语句块**：`runReadAction(() -> x[0] = f())` 写成表达式会在 `Runnable`、`Computable<T>`、`ThrowableComputable<T, E>` 三个重载之间歧义（报「对 runReadAction 的引用不明确」），必须写成 `runReadAction(() -> { x[0] = f(); })`。
+- **`PsiElement.navigate(true)` 本身就要读 PSI，不能当成「导航动作」放在读操作外面**（5.5.1 修）。它内部先走 `EditSourceUtil.getDescriptor(element)` 算目标位置，那一步会调 `getTextOffset()`；TS 的箭头函数上 `JSFunctionExpressionImpl.findNameIdentifier` 为了求偏移量要一路 `getParentSkipParentheses` → `getGreenStubTree` 翻上去，必炸 `Read access is allowed from inside read-action only`。5.5.0 的 `MemberTreeView` 就是被「navigate 会开编辑器、动光标，必须在读操作外面调」这个错判坑的——那句话只对 `OpenFileDescriptor.navigate` 成立。正确写法是拆两半：在 read action 里把 `PsiFile.getVirtualFile()` 和 `getTextOffset()` 取进一元数组，出来之后 `new OpenFileDescriptor(project, file, offset).navigate(true)`，和 `NoteTreeView.navigateToRule` 同一套。顺带 `canNavigate()` 也不必再问了，拿不到 `VirtualFile` 就等于不能跳。
 - 侧边栏（`NoteTreeView`）的路径失效检查和类型图标都在 `buildNode` 里算一次、缓存在 `MyTreeNode` 的 `missing` / `icon` 字段上，**不要挪进渲染器**：`customizeCellRenderer` 每帧对每个可见行都会调一次，碰 VFS 和 `FileTypeManager` 太贵。代价是在 IDE 外面删文件不会自动变红，靠工具栏的「刷新」按钮重建列表（5.4.1 之前是双击根节点）；查存在性走 `TreesUtils.findProjectFile`（`refreshIfNeeded=false`），宁可漏报也不要把好路径误标成失效。另外 `root.add(...)` 不发 model 事件，`DefaultTreeModel.reload()` 必须在加完子节点**之后**调（原代码是先 reload 再 add，新节点得等下一次重绘才出来）。
 - 侧边栏「目录备注」**不做真实目录树，就是平铺一行一条**（用户确认过）。规则是稀疏的，一条 `/src/main/java/a/b/C.java` 在树里要建五层空目录才够挂上它，翻起来比一行一条还慢。既然不做树，`setRootVisible(false)` + `setShowsRootHandles(false)`，5.4.1 那个「备注列表（双击刷新）」的根节点也就没用了（5.5.0 去掉，刷新挪到工具栏）。**渲染器里非 `MyTreeNode` 的分支直接 `return`**，别再往根节点上写文字。
 - 侧边栏「目录备注」**路径已失效的规则一律排在最前面**（5.5.0 起）：`reload()` 先把节点分到 `missing` / `alive` 两个 list，先加 missing 再加 alive。项目树上已经没有它们的节点了，不排上去用户就得自己往下翻。同一趟顺手把失效的实体存进 `missingEntities` 字段给「清除失效路径」用——**这个字段必须在 action 里先拷一份再删**，因为 `XmlStorage.removeByTag` 存盘会触发 `ListenerSave` → `reload()`，把它清空。

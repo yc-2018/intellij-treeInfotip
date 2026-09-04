@@ -17,10 +17,12 @@ import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.FileEditorManagerEvent;
 import com.intellij.openapi.fileEditor.FileEditorManagerListener;
+import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.SimpleToolWindowPanel;
-import com.intellij.pom.Navigatable;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
 import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.components.JBCheckBox;
@@ -216,25 +218,49 @@ public class MemberTreeView extends Tree {
                     return;
                 }
                 final PsiElement element = ((MemberNode) getLastSelectedPathComponent()).getElement();
-                if (!(element instanceof Navigatable)) {
-                    return;
-                }
-                //新版平台的 EDT 不再隐式持有读锁，isValid / canNavigate 都得在读操作里问；
-                //lambda 体必须写成语句块，写成 navigable[0] = ... 的表达式会和
-                //runReadAction(Computable) / runReadAction(ThrowableComputable) 撞成歧义
-                final boolean[] navigable = {false};
-                ApplicationManager.getApplication().runReadAction(() -> {
-                    navigable[0] = element.isValid() && ((Navigatable) element).canNavigate();
-                });
-                if (navigable[0]) {
-                    //navigate 会开编辑器、动光标，必须在读操作外面调
-                    ((Navigatable) element).navigate(true);
-                } else {
-                    //PSI 已经失效（文件被改过），重读一遍再让用户点
-                    reload();
+                if (null != element) {
+                    navigate(element);
                 }
             }
         });
+    }
+
+    /**
+     * 跳到一个成员的定义处
+     * <p>
+     * <b>不能直接调 {@code PsiElement.navigate(true)}</b>。它内部要先算出导航目标
+     * （{@code EditSourceUtil.getDescriptor} → {@code getTextOffset()}），那一步就是读 PSI，
+     * 而新版平台的 EDT 不再隐式持有读锁，2024.1 起直接抛
+     * {@code Read access is allowed from inside read-action only}——5.5.0 就是这么炸的。
+     * TS 的箭头函数尤其明显：{@code JSFunctionExpressionImpl.findNameIdentifier} 为了求偏移量
+     * 要一路往上翻父节点。所以「navigate 必须在读操作外面调」这个说法只对
+     * {@link OpenFileDescriptor} 成立，对 {@code PsiElement} 不成立。
+     * </p>
+     * <p>
+     * 拆成两半：偏移量在读操作里取，开编辑器在读操作外面做。和 {@link NoteTreeView} 里跳
+     * {@code DirectoryV3.xml} 是同一套写法。
+     * </p>
+     */
+    private void navigate(PsiElement element) {
+        final VirtualFile[] file = {null};
+        final int[] offset = {0};
+        //lambda 体必须写成语句块，写成赋值表达式会在 runReadAction 的三个重载之间歧义
+        ApplicationManager.getApplication().runReadAction(() -> {
+            if (!element.isValid()) {
+                return;
+            }
+            final PsiFile containing = element.getContainingFile();
+            if (null != containing) {
+                file[0] = containing.getVirtualFile();
+                offset[0] = element.getTextOffset();
+            }
+        });
+        if (null == file[0]) {
+            //PSI 已经失效（文件被外部改过），重读一遍再让用户点
+            reload();
+            return;
+        }
+        new OpenFileDescriptor(project, file[0], offset[0]).navigate(true);
     }
 
     /**

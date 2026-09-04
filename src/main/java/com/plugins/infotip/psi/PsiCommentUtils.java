@@ -2,6 +2,7 @@ package com.plugins.infotip.psi;
 
 import com.intellij.psi.PsiComment;
 import com.intellij.psi.PsiElement;
+import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiWhiteSpace;
 import com.intellij.psi.util.PsiTreeUtil;
 
@@ -33,6 +34,11 @@ public class PsiCommentUtils {
     private static final int MAX_LENGTH = 120;
 
     /**
+     * {@link #carrier} 往上抬的层数上限。TS 的 {@code const X = () => {}} 只要抬两层就到语句
+     */
+    private static final int MAX_LIFT = 4;
+
+    /**
      * 读注释，找不到返回空串
      *
      * @param element 方法 / 属性 / 类的 PSI 元素
@@ -42,7 +48,8 @@ public class PsiCommentUtils {
         if (null == element || !element.isValid()) {
             return "";
         }
-        final List<String> leading = leadingComments(element);
+        //注释不一定挂在结构视图给的那个元素上，先抬到真正承载它的那一层
+        final List<String> leading = leadingComments(carrier(element));
         //一、文档注释；从最近的一条往前找，正常只会有一条
         for (int i = leading.size() - 1; i >= 0; i--) {
             final String raw = leading.get(i);
@@ -77,6 +84,67 @@ public class PsiCommentUtils {
             }
         }
         return truncate(builder.toString());
+    }
+
+    /**
+     * 找到真正承载前置注释的那一层
+     * <p>
+     * 结构视图给的元素不一定是注释挂靠的地方，TS / TSX 里最典型的就是箭头函数组件：
+     * </p>
+     * <pre>
+     * &#47;** 承运商招募报名审核工作台。 *&#47;
+     * const CarrierRecruitRegPage: React.FC = () =&gt; {}
+     * </pre>
+     * <p>
+     * 结构视图给的是<b>箭头函数</b>，而 JSDoc 挂在整条 {@code const} 语句上，中间隔着
+     * {@code const CarrierRecruitRegPage: React.FC =} 一串 token，在箭头函数这一层往前找
+     * 永远找不到。所以先往上走到语句那一层再找。
+     * </p>
+     * <p>
+     * 往上走的条件是<b>父节点的开头和当前元素在同一行</b>：中间夹了换行就说明父节点是更大的
+     * 结构（类、代码块、多行的对象字面量），它的注释不属于当前这个成员。Java 里类的第一个方法
+     * 就是靠这条不把类的 JavaDoc 认成方法的注释。代价是挤在一行里的对象字面量
+     * （{@code {a: 1, b: 2}}）的属性会抬到字面量本身，宁可多显示一句也不要少显示。
+     * </p>
+     */
+    private static PsiElement carrier(PsiElement element) {
+        PsiElement current = element;
+        for (int lifted = 0; lifted < MAX_LIFT; lifted++) {
+            final PsiElement parent = current.getParent();
+            if (null == parent || parent instanceof PsiFile || !sameLineStart(parent, current)) {
+                break;
+            }
+            current = parent;
+        }
+        return current;
+    }
+
+    /**
+     * 从 {@code current} 往前走到 {@code parent} 的开头，中间有没有跨行
+     * <p>
+     * 逐个叶子走而不是直接切文本：{@code getText()} 会把整个父节点的源码拼成字符串，父节点
+     * 是个类的时候太贵。这里走的步数就是同一行上那几个 token。
+     * </p>
+     * <p>
+     * 半路遇到注释就<b>当作已经到开头</b>，因为那正是要找的东西。少了这一条，JSDoc 作为语句
+     * 第一个子节点的那种挂法（多行 JSDoc 里全是换行）会被判成跨行，白抬一趟。
+     * </p>
+     */
+    private static boolean sameLineStart(PsiElement parent, PsiElement current) {
+        final int start = parent.getTextRange().getStartOffset();
+        for (PsiElement leaf = PsiTreeUtil.prevLeaf(current, true); null != leaf; leaf = PsiTreeUtil.prevLeaf(leaf, true)) {
+            //已经走出 parent 的范围，说明 current 就在 parent 的开头
+            if (leaf.getTextRange().getStartOffset() < start) {
+                return true;
+            }
+            if (null != PsiTreeUtil.getParentOfType(leaf, PsiComment.class, false)) {
+                return true;
+            }
+            if (leaf.getText().indexOf('\n') >= 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**

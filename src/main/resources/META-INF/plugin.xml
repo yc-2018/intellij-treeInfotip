@@ -19,7 +19,7 @@
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.5.0</version>
+    <version>5.5.1</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -59,6 +59,15 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.5.1</p>
+        <li>修复「文件成员」双击跳转报错 Read access is allowed from inside read-action only：求偏移量本身就要读 PSI，不能在读操作外面调 PsiElement.navigate，TS 的箭头函数上必崩</li>
+        <li>补全注释识别：写成 const Page = () =&gt; {} 的箭头函数、以及 const x = {...} 这类变量，上面的 JSDoc 和单行注释以前一条都读不到——注释挂在整条 const 语句上，而结构视图给的是里层的函数或初始值，现在会先往上找到语句那一层再读</li>
+        <li>往上找有边界：只在父节点的开头和当前成员处在同一行时才往上抬，所以类的 JavaDoc 不会被认成它第一个方法的注释</li>
+        <li>Fixed a "Read access is allowed from inside read-action only" crash when double-clicking an item in 文件成员: computing the target offset reads PSI, so PsiElement.navigate cannot be called outside a read action — TS arrow functions crashed every time</li>
+        <li>Comment detection now covers arrow functions and variables written as const Page = () =&gt; {} or const x = {...}: the comment is attached to the whole const statement while the Structure View hands back the inner function or initializer, so the lookup climbs to the statement level first</li>
+        <li>The climb is bounded: it only goes up while the parent starts on the same line as the member, so a class's JavaDoc is never mistaken for its first method's comment</li>
+      </ul>
        <ul>
         <p>5.5.0</p>
         <li>侧边栏「TreeInfotip 备注」拆成两个 tab，默认打开新的「文件成员」：把当前编辑的文件里的方法和属性列成一棵树，每一项后面跟上它的注释——IDE 自带的结构视图只有成员没有注释，这里补上</li>
