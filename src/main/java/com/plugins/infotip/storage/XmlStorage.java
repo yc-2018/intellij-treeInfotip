@@ -160,6 +160,83 @@ public class XmlStorage {
 
 
     /**
+     * 直接按 {@link XmlEntity#getTag()} 删除若干条规则
+     * <p>
+     * 和 {@link #remove(XmlFile, Project, XmlEntity)} 的区别：那个要重新遍历整个文件、按
+     * path + extension 找回标签，一次只能删一条，批量调用会反复解析。这里用解析时就存下的
+     * 标签本体，一个写操作删完所有的，只触发一次保存和一次重新解析。
+     * </p>
+     *
+     * @return 实际删掉的条数；标签已失效（文件被外部改过、还没重新解析）的会被跳过
+     */
+    public static synchronized int removeByTag(Project project, List<XmlEntity> entities) {
+        if (null == entities || entities.isEmpty()) {
+            return 0;
+        }
+        final int[] removed = {0};
+        WriteCommandAction.runWriteCommandAction(project, () -> {
+            for (XmlEntity entity : entities) {
+                if (null == entity) {
+                    continue;
+                }
+                final XmlTag tag = entity.getTag();
+                if (null != tag && tag.isValid()) {
+                    tag.delete();
+                    removed[0]++;
+                }
+            }
+            if (removed[0] > 0) {
+                XmlFileUtils.saveFileXml(project);
+            }
+        });
+        return removed[0];
+    }
+
+    /**
+     * 置顶：把这条 {@code <tree>} 移到 {@code <trees>} 的最前面
+     * <p>
+     * 顺序在 XML 里是有意义的：{@link com.plugins.infotip.trees.TreesUtils#getMatchPath} 同优先级
+     * 多条命中时先遍历到的赢，侧边栏列表也按文件顺序显示。所以置顶是真的改文件，不是只改视图。
+     * </p>
+     * <p>
+     * PSI 没有「移动子节点」，只能先在头部插一份副本再删原件。{@code addSubTag(tag, true)} 的
+     * {@code true} 是插到最前，它返回的是新插进去的那个标签，原 {@code tag} 仍指向老位置，
+     * 所以两步的先后顺序不能颠倒。
+     * </p>
+     *
+     * @return 是否真的动了
+     */
+    public static synchronized boolean moveToTop(Project project, XmlEntity xmlEntity) {
+        final XmlFile xmlFile = XmlFileUtils.getXmlFile(project);
+        if (null == xmlFile || null == xmlEntity) {
+            return false;
+        }
+        final XmlTag tag = xmlEntity.getTag();
+        if (null == tag || !tag.isValid()) {
+            return false;
+        }
+        final XmlDocument document = xmlFile.getDocument();
+        if (null == document) {
+            return false;
+        }
+        final XmlTag rootTag = document.getRootTag();
+        if (null == rootTag || !TREES.equals(rootTag.getName())) {
+            return false;
+        }
+        //已经是第一条就不用动，省一次写操作和一次重新解析
+        final XmlTag[] subTags = rootTag.getSubTags();
+        if (subTags.length > 0 && subTags[0] == tag) {
+            return false;
+        }
+        WriteCommandAction.runWriteCommandAction(project, () -> {
+            rootTag.addSubTag(tag, true);
+            tag.delete();
+            XmlFileUtils.saveFileXml(project);
+        });
+        return true;
+    }
+
+    /**
      * 创建新标签
      *
      * @param xmlFile   xml

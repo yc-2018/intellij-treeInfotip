@@ -19,7 +19,7 @@
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.4.1</version>
+    <version>5.5.0</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -59,6 +59,21 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.5.0</p>
+        <li>侧边栏「TreeInfotip 备注」拆成两个 tab，默认打开新的「文件成员」：把当前编辑的文件里的方法和属性列成一棵树，每一项后面跟上它的注释——IDE 自带的结构视图只有成员没有注释，这里补上</li>
+        <li>注释按四级依次尝试：JavaDoc / JSDoc 文档注释 → 多行注释 → 同行尾部的单行注释 → 紧贴在上方的连续单行注释（空行即断开）</li>
+        <li>「文件成员」借用 IDE 的结构视图取节点，所以 Java、TS / JS / TSX / JSX、Kotlin、Python、Go 等凡是 IDE 能出结构视图的语言都支持；顶部可勾选只看方法或只看属性，拉杆调展开层数（1~10 层）</li>
+        <li>「目录备注」tab：路径已失效的规则一律排到最前面，工具栏新增「清除失效路径」一键删掉全部标红项</li>
+        <li>「目录备注」列表项支持右键：删除（可 Ctrl 多选批量删）、置顶——置顶是真的把这条规则挪到 DirectoryV3.xml 最前面，同优先级的多条规则命中同一节点时它先生效</li>
+        <li>「备注列表（双击刷新）」这个根节点去掉了，刷新挪到工具栏的按钮上，列表直接从第一行开始</li>
+        <li>The "TreeInfotip 备注" tool window now has two tabs, opening on the new "文件成员" (file members): the methods and properties of the current file as a tree, each followed by its comment — the built-in Structure View shows members but no comments</li>
+        <li>Comments are resolved through a four-step fallback: doc comment (JavaDoc / JSDoc) → block comment → trailing line comment on the same line → the run of line comments directly above (a blank line breaks the run)</li>
+        <li>Members come from the IDE's own Structure View, so Java, TS / JS / TSX / JSX, Kotlin, Python, Go and any other language with a structure view are supported; checkboxes filter methods or properties and a slider sets the expanded depth (1-10)</li>
+        <li>In the "目录备注" tab, rules whose path no longer exists are sorted to the top, and a new toolbar button deletes all of them at once</li>
+        <li>Right-click a note for delete (Ctrl-select for batch) and move-to-top — the latter physically moves the rule to the front of DirectoryV3.xml, where it wins among rules of equal priority</li>
+        <li>The "备注列表（双击刷新）" root node is gone; refresh is a toolbar button now and the list starts at the first row</li>
+      </ul>
        <ul>
         <p>5.4.1</p>
         <li>备注列表的显示规则收紧：只要还能在项目树上看到（路径有效），没写备注也没改显示名的规则就不列出，按扩展名批量设置的规则也一样</li>
@@ -250,7 +265,7 @@
         <!-- 图标写 /icons/treeNote.svg，深色主题下平台会自动去找同目录的 treeNote_dark.svg，
              不用也不能在这里声明第二个路径 -->
         <toolWindow id="TreeInfotip 备注" secondary="true" icon="/icons/treeNote.svg" anchor="right"
-                    factoryClass="com.plugins.infotip.gui.view.NoteTreeView"/>
+                    factoryClass="com.plugins.infotip.gui.view.NotesToolWindowFactory"/>
         <toolWindow id="TreeInfotip XML" secondary="true" icon="AllIcons.FileTypes.Xml" anchor="bottom"
                     factoryClass="com.plugins.infotip.gui.view.XmlEditorToolWindow"/>
         <notificationGroup id="TreeInfotip" displayType="STICKY_BALLOON"/>

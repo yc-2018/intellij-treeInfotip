@@ -1,0 +1,459 @@
+package com.plugins.infotip.gui.view;
+
+import com.intellij.icons.AllIcons;
+import com.intellij.ide.structureView.StructureViewBuilder;
+import com.intellij.ide.structureView.StructureViewModel;
+import com.intellij.ide.structureView.StructureViewTreeElement;
+import com.intellij.ide.structureView.TreeBasedStructureViewBuilder;
+import com.intellij.ide.util.treeView.smartTree.TreeElement;
+import com.intellij.navigation.ItemPresentation;
+import com.intellij.openapi.actionSystem.ActionManager;
+import com.intellij.openapi.actionSystem.ActionToolbar;
+import com.intellij.openapi.actionSystem.AnAction;
+import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.actionSystem.DefaultActionGroup;
+import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.fileEditor.FileEditor;
+import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.fileEditor.FileEditorManagerEvent;
+import com.intellij.openapi.fileEditor.FileEditorManagerListener;
+import com.intellij.openapi.project.Project;
+import com.intellij.openapi.ui.SimpleToolWindowPanel;
+import com.intellij.pom.Navigatable;
+import com.intellij.psi.PsiElement;
+import com.intellij.ui.ColoredTreeCellRenderer;
+import com.intellij.ui.SimpleTextAttributes;
+import com.intellij.ui.components.JBCheckBox;
+import com.intellij.ui.components.JBScrollPane;
+import com.intellij.ui.treeStructure.Tree;
+import com.plugins.infotip.gui.IconsUtils;
+import com.plugins.infotip.gui.compone.MemberNode;
+import com.plugins.infotip.psi.PsiCommentUtils;
+import org.jetbrains.annotations.NotNull;
+
+import javax.swing.BoxLayout;
+import javax.swing.Icon;
+import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JSlider;
+import javax.swing.JTree;
+import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.DefaultTreeModel;
+import javax.swing.tree.TreePath;
+import java.awt.FlowLayout;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * A <code>MemberTreeView</code> Class
+ * <p>
+ * 「文件成员」列表：把当前编辑的文件里的方法和属性列出来，每一项后面跟上它的注释。
+ * </p>
+ * <p>
+ * IDE 自带的 Structure View 已经有这棵树了，缺的就是注释——所以这里不自己解析语法，
+ * 直接借 Structure View 的模型（{@link StructureViewModel}）拿节点，再用
+ * {@link PsiCommentUtils} 给每个节点补一段注释。这么做的好处是语言支持白拿：Java、
+ * TS / JS / TSX / JSX、Kotlin、Python、Go……凡是 IDE 能出结构视图的都能出，
+ * 而且不用在 {@code plugin.xml} 里加任何 {@code <depends>}。
+ * </p>
+ *
+ * @author lk
+ * @version 1.0
+ */
+public class MemberTreeView extends Tree {
+
+    /**
+     * 工具栏的 {@code place}，只用于 action 事件溯源，不是全局注册的 id
+     */
+    private static final String PLACE_TOOLBAR = "TreeInfotipMemberListToolbar";
+
+    /**
+     * 层数上限。再深的树在这个宽度的侧边栏里已经没法看了
+     */
+    private static final int MAX_DEPTH = 10;
+
+    private static final int DEFAULT_DEPTH = 3;
+
+    /**
+     * 节点数上限
+     * <p>
+     * 几千行的文件（打包压缩过的 js、生成的代码）结构树能有上万个节点，全建出来再全展开会把
+     * EDT 卡住。到了上限就停下并在末尾补一行提示——这个列表是用来快速看一眼的，真要看全的
+     * 去 IDE 自带的 Structure View。
+     * </p>
+     */
+    private static final int MAX_NODES = 3000;
+
+    //region 节点类别
+    private static final int KIND_OTHER = 0;
+
+    private static final int KIND_METHOD = 1;
+
+    private static final int KIND_PROPERTY = 2;
+    //endregion 节点类别
+
+    private final Project project;
+
+    private final JBCheckBox methodBox = new JBCheckBox("方法", true);
+
+    private final JBCheckBox propertyBox = new JBCheckBox("属性", true);
+
+    private final JSlider depthSlider = new JSlider(1, MAX_DEPTH, DEFAULT_DEPTH);
+
+    private final JLabel depthLabel = new JLabel();
+
+    /**
+     * 本次 {@link #reload()} 已经建了多少个节点，用来卡 {@link #MAX_NODES}
+     */
+    private int nodes;
+
+    private MemberTreeView(@NotNull Project project) {
+        super(new DefaultMutableTreeNode("文件成员"));
+        this.project = project;
+        //根节点只是个容器，没必要显示；但要留出展开箭头的位置
+        setRootVisible(false);
+        setShowsRootHandles(true);
+        setCellRenderer(new MemberCellRenderer());
+    }
+
+    /**
+     * 建出「文件成员」这个 tab 的整块内容：上面两行控件，下面一棵可滚动的树
+     *
+     * @param project 当前项目
+     * @return 直接塞给 {@code ContentFactory#createContent} 的组件
+     */
+    public static JComponent createPanel(@NotNull Project project) {
+        final MemberTreeView view = new MemberTreeView(project);
+        view.installNavigation();
+        view.listenEditorChange();
+        final SimpleToolWindowPanel panel = new SimpleToolWindowPanel(true, true);
+        panel.setToolbar(view.createToolbar());
+        panel.setContent(new JBScrollPane(view));
+        view.reload();
+        return panel;
+    }
+
+    /**
+     * 顶部控件区：第一行是刷新按钮 + 两个勾选框，第二行是层数拉杆
+     */
+    private JComponent createToolbar() {
+        final DefaultActionGroup group = new DefaultActionGroup();
+        group.add(new RefreshAction());
+        final ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar(PLACE_TOOLBAR, group, true);
+        //不设 targetComponent 平台会警告，action 的 update 也拿不到正确的 DataContext
+        toolbar.setTargetComponent(this);
+
+        final JPanel first = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+        first.add(toolbar.getComponent());
+        first.add(methodBox);
+        first.add(propertyBox);
+
+        final JPanel second = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        second.add(new JLabel("层数"));
+        second.add(depthSlider);
+        second.add(depthLabel);
+
+        final JPanel box = new JPanel();
+        box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
+        box.add(first);
+        box.add(second);
+        installControlListeners();
+        return box;
+    }
+
+    private void installControlListeners() {
+        depthSlider.setMajorTickSpacing(1);
+        depthSlider.setSnapToTicks(true);
+        depthSlider.setToolTipText("展开几层成员，最多 " + MAX_DEPTH + " 层");
+        updateDepthLabel();
+        depthSlider.addChangeListener(e -> {
+            //标签跟着拖动实时变，但重建整棵树太贵，只在松手之后做一次
+            updateDepthLabel();
+            if (!depthSlider.getValueIsAdjusting()) {
+                reload();
+            }
+        });
+        methodBox.setToolTipText("显示方法 / 函数");
+        propertyBox.setToolTipText("显示属性 / 字段 / 变量");
+        methodBox.addActionListener(e -> reload());
+        propertyBox.addActionListener(e -> reload());
+    }
+
+    private void updateDepthLabel() {
+        depthLabel.setText(depthSlider.getValue() + " 层");
+    }
+
+    /**
+     * 切到别的文件就重读一遍
+     * <p>
+     * {@code connect(project)} 把连接挂在项目上，项目关掉自动断开，不用自己 dispose。
+     * </p>
+     */
+    private void listenEditorChange() {
+        project.getMessageBus().connect(project).subscribe(FileEditorManagerListener.FILE_EDITOR_MANAGER,
+                new FileEditorManagerListener() {
+                    @Override
+                    public void selectionChanged(@NotNull FileEditorManagerEvent event) {
+                        reload();
+                    }
+                });
+    }
+
+    /**
+     * 双击跳到成员的定义处
+     */
+    private void installNavigation() {
+        addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (2 != e.getClickCount()) {
+                    return;
+                }
+                if (!(getLastSelectedPathComponent() instanceof MemberNode)) {
+                    return;
+                }
+                final PsiElement element = ((MemberNode) getLastSelectedPathComponent()).getElement();
+                if (!(element instanceof Navigatable)) {
+                    return;
+                }
+                //新版平台的 EDT 不再隐式持有读锁，isValid / canNavigate 都得在读操作里问；
+                //lambda 体必须写成语句块，写成 navigable[0] = ... 的表达式会和
+                //runReadAction(Computable) / runReadAction(ThrowableComputable) 撞成歧义
+                final boolean[] navigable = {false};
+                ApplicationManager.getApplication().runReadAction(() -> {
+                    navigable[0] = element.isValid() && ((Navigatable) element).canNavigate();
+                });
+                if (navigable[0]) {
+                    //navigate 会开编辑器、动光标，必须在读操作外面调
+                    ((Navigatable) element).navigate(true);
+                } else {
+                    //PSI 已经失效（文件被改过），重读一遍再让用户点
+                    reload();
+                }
+            }
+        });
+    }
+
+    /**
+     * 重建整棵树。切文件、点刷新、改勾选、拖完拉杆都走这里
+     */
+    private void reload() {
+        final DefaultMutableTreeNode root = (DefaultMutableTreeNode) getModel().getRoot();
+        root.removeAllChildren();
+        nodes = 0;
+        //一个成员都没有时给一句话，让用户知道是没打开文件、还是这类文件不支持、还是勾选全关了
+        final String[] hint = {""};
+        ApplicationManager.getApplication().runReadAction(() -> {
+            hint[0] = fill(root);
+        });
+        if (0 == root.getChildCount()) {
+            root.add(new DefaultMutableTreeNode(hint[0]));
+        }
+        //root.add 不发 model 事件，reload 必须在加完子节点之后调
+        ((DefaultTreeModel) getModel()).reload();
+        //rootVisible=false 的树，根节点自己也要展开，否则一层都看不到
+        expandPath(new TreePath(root));
+        expandAll();
+    }
+
+    /**
+     * 把当前文件的成员填进 {@code root}，返回填不出东西时该显示的提示
+     * <p>
+     * 必须在读操作里调。
+     * </p>
+     */
+    private String fill(DefaultMutableTreeNode root) {
+        final FileEditor editor = FileEditorManager.getInstance(project).getSelectedEditor();
+        if (null == editor) {
+            return "没有打开的文件";
+        }
+        final StructureViewBuilder builder = editor.getStructureViewBuilder();
+        if (!(builder instanceof TreeBasedStructureViewBuilder)) {
+            //不是基于树的 builder（图片、二进制之类的自定义编辑器）就拿不到节点，没别的办法
+            return "这类文件没有结构信息";
+        }
+        //三个控件的值先取出来：下面的 try 里读不到局部作用域外的它们
+        final int depth = depthSlider.getValue();
+        final boolean methods = methodBox.isSelected();
+        final boolean properties = propertyBox.isSelected();
+        //createStructureViewModel(null) 不传 Editor：不需要跟随光标，只要一棵树
+        final StructureViewModel structure = ((TreeBasedStructureViewBuilder) builder).createStructureViewModel(null);
+        try {
+            for (TreeElement child : structure.getRoot().getChildren()) {
+                final MemberNode node = build(child, 1, depth, methods, properties);
+                if (null != node) {
+                    root.add(node);
+                }
+            }
+        } finally {
+            //StructureViewModel 是 Disposable，不 dispose 会漏掉它内部挂的监听
+            structure.dispose();
+        }
+        if (nodes >= MAX_NODES) {
+            root.add(new DefaultMutableTreeNode("（成员太多，只显示了前 " + MAX_NODES + " 项）"));
+        }
+        if (!methods && !properties) {
+            return "勾选上面的「方法」或「属性」";
+        }
+        return "这个文件里没有可显示的成员";
+    }
+
+    private void expandAll() {
+        //getRowCount 会随着展开一路变大，所以不能提前存下来
+        for (int row = 0; row < getRowCount(); row++) {
+            expandRow(row);
+        }
+    }
+
+    /**
+     * 递归把一个结构视图节点转成 {@link MemberNode}
+     *
+     * @param element    结构视图给的节点
+     * @param depth      当前层数，从 1 开始
+     * @param maxDepth   拉杆上设的层数上限
+     * @param methods    要不要方法
+     * @param properties 要不要属性
+     * @return 不该显示时返回 {@code null}
+     */
+    private MemberNode build(TreeElement element, int depth, int maxDepth, boolean methods, boolean properties) {
+        if (nodes >= MAX_NODES) {
+            return null;
+        }
+        final List<MemberNode> children = new ArrayList<>();
+        if (depth < maxDepth) {
+            for (TreeElement child : element.getChildren()) {
+                final MemberNode node = build(child, depth + 1, maxDepth, methods, properties);
+                if (null != node) {
+                    children.add(node);
+                }
+            }
+        }
+        final ItemPresentation presentation = element.getPresentation();
+        final String name = trimmed(presentation.getPresentableText());
+        if (name.isEmpty()) {
+            return null;
+        }
+        final PsiElement psi = psiOf(element);
+        //只在叶子上按勾选过滤：内层节点（类、接口）被滤掉的话，它下面的成员就成了孤儿
+        if (children.isEmpty()) {
+            final int kind = classify(psi, name);
+            if (KIND_METHOD == kind && !methods) {
+                return null;
+            }
+            if (KIND_PROPERTY == kind && !properties) {
+                return null;
+            }
+        }
+        nodes++;
+        final MemberNode node = new MemberNode(name)
+                .setIcon(fit(presentation.getIcon(false)))
+                .setElement(psi)
+                .setComment(PsiCommentUtils.read(psi));
+        for (MemberNode child : children) {
+            node.add(child);
+        }
+        return node;
+    }
+
+    private static PsiElement psiOf(TreeElement element) {
+        if (!(element instanceof StructureViewTreeElement)) {
+            return null;
+        }
+        final Object value = ((StructureViewTreeElement) element).getValue();
+        return value instanceof PsiElement ? (PsiElement) value : null;
+    }
+
+    /**
+     * 判断一个节点是方法还是属性
+     * <p>
+     * 这里<b>不认任何具体语言的 PSI 类</b>——认了就得在 {@code plugin.xml} 里加 {@code <depends>}，
+     * 而且每多支持一种语言就得改一次。改成往上翻实现类和接口的<b>简单名</b>：Java 是
+     * {@code PsiMethodImpl} / {@code PsiFieldImpl}，TS 是 {@code TypeScriptFunction}，
+     * Kotlin 是 {@code KtNamedFunction} / {@code KtProperty}，Python 是 {@code PyFunction}……
+     * 名字里带 Method / Function / Constructor 的算方法，带 Field / Property / Variable /
+     * Constant 的算属性。
+     * </p>
+     * <p>
+     * 两头都不沾的归 {@link #KIND_OTHER}，而 OTHER <b>永远显示</b>：宁可多显示几行，也不要
+     * 因为认不出类别就把整个类连着它的方法一起藏掉。
+     * </p>
+     */
+    private static int classify(PsiElement psi, String name) {
+        if (null != psi) {
+            for (Class<?> type = psi.getClass(); null != type && Object.class != type; type = type.getSuperclass()) {
+                final int kind = kindOfName(type.getSimpleName());
+                if (KIND_OTHER != kind) {
+                    return kind;
+                }
+                for (Class<?> face : type.getInterfaces()) {
+                    final int byFace = kindOfName(face.getSimpleName());
+                    if (KIND_OTHER != byFace) {
+                        return byFace;
+                    }
+                }
+            }
+        }
+        //兜底：结构视图给方法的显示文字基本都带参数括号
+        return name.contains("(") ? KIND_METHOD : KIND_OTHER;
+    }
+
+    private static int kindOfName(String simpleName) {
+        if (simpleName.contains("Method") || simpleName.contains("Function") || simpleName.contains("Constructor")) {
+            return KIND_METHOD;
+        }
+        if (simpleName.contains("Field") || simpleName.contains("Property")
+                || simpleName.contains("Variable") || simpleName.contains("Constant")) {
+            return KIND_PROPERTY;
+        }
+        return KIND_OTHER;
+    }
+
+    /**
+     * 结构视图给的图标也可能超过 16，和目录树一样要缩到一行的高度
+     */
+    private static Icon fit(Icon icon) {
+        return null == icon ? null : IconsUtils.fit(icon);
+    }
+
+    private static String trimmed(String text) {
+        return null == text ? "" : text.trim();
+    }
+
+    private class RefreshAction extends AnAction {
+
+        RefreshAction() {
+            super("刷新", "重新读一遍当前文件的成员和注释", AllIcons.Actions.Refresh);
+        }
+
+        @Override
+        public void actionPerformed(@NotNull AnActionEvent e) {
+            reload();
+        }
+    }
+
+    /**
+     * 成员名用正常色，后面跟的注释用灰色。拼成一个字符串就没法分开上色了，所以
+     * {@link MemberNode} 把两段分开存
+     */
+    private static class MemberCellRenderer extends ColoredTreeCellRenderer {
+
+        @Override
+        public void customizeCellRenderer(@NotNull JTree tree, Object value, boolean selected,
+                                          boolean expanded, boolean leaf, int row, boolean hasFocus) {
+            if (!(value instanceof MemberNode)) {
+                //提示行（没打开文件、成员太多）整行灰字
+                append(String.valueOf(value), SimpleTextAttributes.GRAYED_ATTRIBUTES);
+                return;
+            }
+            final MemberNode node = (MemberNode) value;
+            setIcon(node.getIcon());
+            append(node.getName(), SimpleTextAttributes.REGULAR_ATTRIBUTES);
+            if (!node.getComment().isEmpty()) {
+                append("  " + node.getComment(), SimpleTextAttributes.GRAYED_ATTRIBUTES);
+            }
+        }
+    }
+}

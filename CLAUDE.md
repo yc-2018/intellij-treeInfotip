@@ -124,6 +124,39 @@ PresentationData：图标 / locationString / tooltip / presentableText / 文字�
 
 新增一个可配置属性要同时改四处：`XmlEntity` 加字段、`XmlStorage` 加常量并在 `tree()` / `modify()` / `create()` 三处登记、`TreesStyle.setStyle` 应用到 `PresentationData`、最后加对应 action 并在 `plugin.xml` 注册。
 
+### 侧边栏工具窗口（5.5.0 起两个 tab）
+
+`plugin.xml` 里 `TreeInfotip 备注` 这个 `toolWindow` 的 `factoryClass` 指向 `NotesToolWindowFactory`，它建两个 `Content`：
+
+| tab | 面板类 | 内容 |
+|---|---|---|
+| 文件成员（默认选中） | `MemberTreeView.createPanel(project)` | 当前编辑文件的方法 / 属性树，每项后面跟注释 |
+| 目录备注 | `NoteTreeView.createPanel(project)` | `DirectoryV3.xml` 里的规则平铺一行一条 |
+
+两个面板类都是 `extends Tree` + **私有构造 + 静态 `createPanel`**，自己套 `SimpleToolWindowPanel`（`setToolbar` + `setContent(new JBScrollPane(this))`）。`NoteTreeView` 5.5.0 起**不再是 `ToolWindowFactory`**，别再往它身上加 `createToolWindowContent`。两个 content 都 `setCloseable(false)`——关掉了没有入口再开。
+
+**「文件成员」不自己解析语法，借 IDE 的结构视图取节点**：`FileEditor.getStructureViewBuilder()` → 转 `TreeBasedStructureViewBuilder` → `createStructureViewModel(null)`（不传 `Editor`，不需要跟随光标）→ `getRoot()` → 递归 `TreeElement.getChildren()`。这么做 Java、TS / JS / TSX / JSX、Kotlin、Python、Go 全是白拿的，而且**不用在 `plugin.xml` 里加任何 `<depends>`**。三条硬约束：
+
+- `StructureViewModel extends Disposable`，**必须在 `finally` 里 `dispose()`**，否则漏掉它内部挂的监听。
+- 不是 `TreeBasedStructureViewBuilder` 的 builder（图片、二进制之类的自定义编辑器）拿不到节点，直接给一句「这类文件没有结构信息」，没有别的办法。
+- **不能用 `LanguageStructureViewBuilder`**：`INSTANCE` 字段在 2026.2 已废弃，`getInstance()` 在 2022.3 还不存在，两头都不占。走 `FileEditor` 这条路两个版本都干净。
+
+**判断一个节点是方法还是属性，不认任何具体语言的 PSI 类**（认了就得加 `<depends>`，而且每多支持一种语言就得改一次）：往上翻实现类的父类链、每一层再翻它的接口，只比**简单名**——含 `Method` / `Function` / `Constructor` 算方法，含 `Field` / `Property` / `Variable` / `Constant` 算属性，兜底看显示文字里有没有 `(`。两头都不沾的归 `KIND_OTHER`，而 **OTHER 永远显示**：宁可多显示几行，也不要因为认不出类别就把整个类连着它的方法一起藏掉。另外**过滤只作用在叶子上**（`children.isEmpty()`），内层节点（类、接口）被滤掉的话它下面的成员就成了孤儿。
+
+拉杆的层数**同时是构建深度和展开深度**：`build()` 到了 `maxDepth` 就不再递归，建完整棵树全展开。上限 10 层，再深在这个宽度的侧边栏里已经没法看。节点数另有 `MAX_NODES = 3000` 的上限，到了就停下并在末尾补一行灰字提示——几千行的压缩 js / 生成代码结构树能有上万个节点，全建出来再全展开会把 EDT 卡住。
+
+刷新只在**切编辑器**（`FileEditorManagerListener.FILE_EDITOR_MANAGER` 的 `selectionChanged`）和**点刷新按钮**时发生，没挂 PSI 变化监听：边打字边重建整棵树太贵。`connect(project)` 把连接挂在项目上，项目关掉自动断开，不用自己 dispose。
+
+### 读注释（`PsiCommentUtils`）
+
+`PsiCommentUtils.read(psiElement)` 是「文件成员」每项后面那段注释的唯一来源，严格四级、命中一级就不往下找：**文档注释（`/**`）→ 多行注释（`/*`）→ 同行尾部的单行注释 → 紧贴在上方的连续单行注释**（一段空白里出现两个及以上换行就算空行，直接断开）。
+
+**刻意只认平台自带的 `PsiComment`，靠注释文本开头的记号分类**。`PsiDocComment`、`JSDocComment` 这些都在各自的语言插件里，本插件不声明依赖，直接引用会在没装那些插件的 IDE 上 `NoClassDefFoundError`。代价是判断不了语言层面的语义，收益是一套逻辑覆盖所有语言（`//`、`#`、`--` 都当单行注释认）。
+
+收集上方注释要**分两步**，因为不同语言把注释挂在不同地方：Java 的 JavaDoc、Kotlin 的 KDoc 是方法元素**自己的第一个子节点**，而 JS / TS / Go 里多半是方法的**前一个兄弟**。所以先扫自己的头部子节点，一条都没有再用 `PsiTreeUtil.prevLeaf` 逐个叶子往前走。往前走时**必须用 `PsiTreeUtil.getParentOfType(leaf, PsiComment.class, false)` 把叶子抬回整条注释**——JSDoc 在 PSI 里是复合元素，直接拿叶子只能拿到 `/**` 这几个字符。
+
+`clean()` 里 `@param` / `@return` 这类标签行单独攒一份：正文有内容就只要正文，正文全是标签才退回去用它们，总比显示空白好。显示长度上限 `MAX_LENGTH = 120`。
+
 ### 回调注册表
 
 `TreesStyle.ListenerStyle`、`XmlFileUtils.ListenerSave`、`PluginStartupActivity.ListenerRun` 都是 `ConcurrentHashMap<Object, Callback>` 静态注册表，用于配置变化时刷新工具窗口。它们**只 put 从不 remove**，key 一般传监听方自己的实例。
@@ -228,8 +261,13 @@ Marketplace 的插件名始终从 `plugin.xml` 读，网页后台改不了，所
 
 - `plugin.xml` 声明 `since-build="223"`，和编译平台 2022.3.2（`gradle.properties` 的 `platformVersion`）对齐，所以下限不再是「谎报」。但**上限没有**：`build.gradle` 里 `updateSinceUntilBuild = false` 是刻意的，不能写 `until-build`，否则新版 IDE 装不上。代价是新 IDE 删掉的 API 只能在运行期暴露——反射拿到的 `AllIcons` 字段名就可能凭空消失（历史事故见上）。
 - `sourceCompatibility = targetCompatibility = 17`。**不要提到 21**：`platformVersion=2022.3.2` 自带的 JBR 是 17，21 的字节码在 `runIde` 沙箱和用户机器上都加载不了；真要上 21 得先把 `platformVersion` 拉到 2025.x，那会一并撞上 `ContentFactory.SERVICE` 这类已标记删除的 API。
-- **新版平台的 EDT 不再隐式持有读锁**，Swing 监听器里直接碰 PSI 或索引会抛 `Read access is allowed from inside read-action only`（`ThreadingAssertions.assertReadAccess`）。2022.3 上不报，2024.1 起报——`NoteTreeView` 的双击跳转就是这么在 2026.2 上炸的（5.3.0 修）。补法是自己包一层读操作，用 `ApplicationManager.getApplication().runReadAction(Runnable)`：**不能用报错信息里推荐的 `WriteIntentReadAction`**（那个类 2024.1 才有，`since-build=223` 编不过），**也不能用 `ReadAction.run(ThrowableRunnable)`**（那个重载已废弃，Plugin Verifier 会报出来，5.3.2 换掉）。`TreesUtils.Navigation` 里 `findDirectory`/`findFile` 和 `selectPsiElement` 包在同一个 read action 里，因为后者内部还要再读一次 PSI 拿 `VirtualFile`。
-- 侧边栏（`NoteTreeView`）的路径失效检查和类型图标都在 `buildNode` 里算一次、缓存在 `MyTreeNode` 的 `missing` / `icon` 字段上，**不要挪进渲染器**：`customizeCellRenderer` 每帧对每个可见行都会调一次，碰 VFS 和 `FileTypeManager` 太贵。代价是在 IDE 外面删文件不会自动变红，靠双击根节点重建列表刷新；查存在性走 `TreesUtils.findProjectFile`（`refreshIfNeeded=false`），宁可漏报也不要把好路径误标成失效。另外 `root.add(...)` 不发 model 事件，`DefaultTreeModel.reload()` 必须在加完子节点**之后**调（原代码是先 reload 再 add，新节点得等下一次重绘才出来）。
+- **新版平台的 EDT 不再隐式持有读锁**，Swing 监听器里直接碰 PSI 或索引会抛 `Read access is allowed from inside read-action only`（`ThreadingAssertions.assertReadAccess`）。2022.3 上不报，2024.1 起报——`NoteTreeView` 的双击跳转就是这么在 2026.2 上炸的（5.3.0 修）。补法是自己包一层读操作，用 `ApplicationManager.getApplication().runReadAction(Runnable)`：**不能用报错信息里推荐的 `WriteIntentReadAction`**（那个类 2024.1 才有，`since-build=223` 编不过），**也不能用 `ReadAction.run(ThrowableRunnable)`**（那个重载已废弃，Plugin Verifier 会报出来，5.3.2 换掉）。`TreesUtils.Navigation` 里 `findDirectory`/`findFile` 和 `selectPsiElement` 包在同一个 read action 里，因为后者内部还要再读一次 PSI 拿 `VirtualFile`。**要往外带值就用一元数组 + 语句块**：`runReadAction(() -> x[0] = f())` 写成表达式会在 `Runnable`、`Computable<T>`、`ThrowableComputable<T, E>` 三个重载之间歧义（报「对 runReadAction 的引用不明确」），必须写成 `runReadAction(() -> { x[0] = f(); })`。
+- 侧边栏（`NoteTreeView`）的路径失效检查和类型图标都在 `buildNode` 里算一次、缓存在 `MyTreeNode` 的 `missing` / `icon` 字段上，**不要挪进渲染器**：`customizeCellRenderer` 每帧对每个可见行都会调一次，碰 VFS 和 `FileTypeManager` 太贵。代价是在 IDE 外面删文件不会自动变红，靠工具栏的「刷新」按钮重建列表（5.4.1 之前是双击根节点）；查存在性走 `TreesUtils.findProjectFile`（`refreshIfNeeded=false`），宁可漏报也不要把好路径误标成失效。另外 `root.add(...)` 不发 model 事件，`DefaultTreeModel.reload()` 必须在加完子节点**之后**调（原代码是先 reload 再 add，新节点得等下一次重绘才出来）。
+- 侧边栏「目录备注」**不做真实目录树，就是平铺一行一条**（用户确认过）。规则是稀疏的，一条 `/src/main/java/a/b/C.java` 在树里要建五层空目录才够挂上它，翻起来比一行一条还慢。既然不做树，`setRootVisible(false)` + `setShowsRootHandles(false)`，5.4.1 那个「备注列表（双击刷新）」的根节点也就没用了（5.5.0 去掉，刷新挪到工具栏）。**渲染器里非 `MyTreeNode` 的分支直接 `return`**，别再往根节点上写文字。
+- 侧边栏「目录备注」**路径已失效的规则一律排在最前面**（5.5.0 起）：`reload()` 先把节点分到 `missing` / `alive` 两个 list，先加 missing 再加 alive。项目树上已经没有它们的节点了，不排上去用户就得自己往下翻。同一趟顺手把失效的实体存进 `missingEntities` 字段给「清除失效路径」用——**这个字段必须在 action 里先拷一份再删**，因为 `XmlStorage.removeByTag` 存盘会触发 `ListenerSave` → `reload()`，把它清空。
+- **XML 里标签的先后顺序是有语义的**，所以「置顶」是真的改文件不是列表排序：`TreesUtils.getMatchPath` 在同优先级时让先遇到的那条赢。PSI 没有「移动子节点」的 API，`XmlStorage.moveToTop` 的做法是 `rootTag.addSubTag(tag, true)`（插到最前，**返回的是新拷贝**）然后 `tag.delete()`，**顺序不能反**——先删就没有源可拷了。已经是第一条时直接返回 `false`，调用方不白刷一次列表。
+- **列表里的 `AnAction` 一律不覆盖 `update()`**（5.5.0 起）。`getActionUpdateThread()` 的默认值 2022.3 是 EDT、2026.2 是 BGT，在 `update()` 里读 Swing 的选中状态跨版本不安全。所以这些 action 永远是启用的，空选中的情况在 `actionPerformed` 里处理（那里一定在 EDT 上），用 `Messages` 弹一句。删除类动作都要先 `Messages.showDialog(...)` 确认，**默认焦点放「取消」**（`defaultOptionIndex=1`），改的是用户项目里的 `DirectoryV3.xml`，不可逆。
+- 右键菜单用 `PopupHandler.installFollowingSelectionTreePopup(JTree, ActionGroup, String)`——它会先把右键点到的那一行选上再弹菜单，action 里直接读选中项就行。**别换成 `PopupHandler.installPopupHandler(...)`**，那几个重载在新版平台上全带删除标记，Plugin Verifier 会报出来。工具栏和右键菜单的 `place` 字符串（`TreeInfotipNoteListToolbar` 等）只用于 action 事件溯源，**不是全局注册的 id**，不受重名限制。
 - 侧边栏列表的显示规则**是不对称的**（5.4.0 起，5.4.1 收紧）：`label()` 先取用户写的文字（`title` → `presentableText` 兜底），两个都空时按路径存不存在分岔——**路径还在的返回空串**，`buildNode` 直接返回 `null` 不进列表（效果在项目树上本来就看得见，列表里却只有空白一行，认不出是哪条也点不动，而它的入口就在项目树的右键菜单上）；**路径已失效的必须进列表**，没有文字就拿它配的路径当标题（普通规则）或 `*.扩展名 @ 生效范围`（类型规则），因为项目树上连节点都没有了，列表是用户唯一能发现并清掉它的地方。只设了颜色/图标/删除线的规则就属于「没有文字」这一类，**按扩展名批量设置的规则也一样按这条走**（5.4.0 曾无条件给类型规则显示 `*.ts @ /src/x` 后缀，5.4.1 改成只在失效时显示）。因此 `buildNode` 里必须先算 `missing` 再决定跳不跳，`label(entity, typeRule, missing)` 三个参数都是必需的。只写 `extension` 的全项目规则没有路径可查，永远算有效，所以它没写文字时也不进列表。
 - 侧边栏双击**一定要有反应**（5.4.0 起）：`navigate()` 先自己查一次 VFS，能落到真实文件就 `TreesUtils.Navigation`，否则跳 `DirectoryV3.xml` 里这条规则所在的行。这里**不要看 `MyTreeNode.isMissing()`**——那个状态是建节点时算的，建完之后在 IDE 外面删文件不会刷新，照它判断会把已经失效的当成有效去跳，又变成没反应。跳 XML 的偏移量取自解析时存在 `XmlEntity.tag` 上的 `XmlTag`（`getTextOffset()`），行号一定对得上，不用自己在文本里找；`tag` 失效时退到 `XmlFileUtils.getXmlFile(project)` 的文件开头。读 PSI 那段要包在 `runReadAction` 里，`new OpenFileDescriptor(project, file, offset).navigate(true)` 要在读操作**外面**调。3 参构造和 `navigate(boolean)` 在 2022.3.2 和 2026.2.1 上都不带任何注解；同类里 `IntSupplier` 重载、`navigateInEditor`、`navigateIn` 在 2026.2 是 internal，别用。
 - **工具窗口和菜单图标不引 `AllIcons`，用仓库自带的 svg**（5.4.0 起）。理由和历史事故一样：反射不到的 `AllIcons` 字段会在新版 IDE 上凭空消失。两条约定：
