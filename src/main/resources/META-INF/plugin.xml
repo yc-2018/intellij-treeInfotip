@@ -19,7 +19,7 @@
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.4.0</version>
+    <version>5.4.1</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -59,6 +59,13 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.4.1</p>
+        <li>备注列表的显示规则收紧：只要还能在项目树上看到（路径有效），没写备注也没改显示名的规则就不列出，按扩展名批量设置的规则也一样</li>
+        <li>反过来，路径已失效的规则即使什么文字都没配也一定列出——项目树上已经没有它的节点了，列表是唯一能发现并清掉它的地方，这时拿它配的路径当标题显示</li>
+        <li>Tightened the note list: as long as a rule is still visible in the project tree, it is skipped when it has neither a note nor an overridden display name — extension rules included</li>
+        <li>Conversely, a rule whose path no longer exists is always listed even with no text configured, since the project tree has no node for it any more and the list is the only place to find and remove it; its configured path is used as the label</li>
+      </ul>
        <ul>
         <p>5.4.0</p>
         <li>右键菜单「目录备注」分组用新的备注图标，侧边栏改用按插件 logo 重绘的 16×16 单色图标，浅色主题显示深灰、深色主题自动切白色</li>

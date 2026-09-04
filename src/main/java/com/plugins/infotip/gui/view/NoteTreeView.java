@@ -162,30 +162,27 @@ public class NoteTreeView extends Tree implements ToolWindowFactory {
      * 存不存在只在这里查一次，不放渲染器里：渲染器每帧对每个可见行都要调一次，不能碰 VFS。
      * </p>
      *
-     * @return 没有任何文字可显示时返回 {@code null}，调用方跳过不加进列表
+     * @return 没有任何文字可显示、路径又还在的规则返回 {@code null}，调用方跳过不加进列表
      */
     private static MyTreeNode buildNode(Project project, XmlEntity entity) {
-        final String label = label(entity);
-        //只设了颜色、图标或删除线、没写备注也没改显示名的规则，在列表里就是一整行空白，
-        //既看不出是哪条、也没法用（这类规则的入口本来就在项目树的右键菜单上），干脆不列
+        final String extension = entity.getExtension();
+        final boolean typeRule = !trimmed(extension).isEmpty();
+        final boolean scoped = !trimmed(entity.getPath()).isEmpty();
+        //只写 extension 的全项目规则没有路径可查，永远算有效；
+        //其余的（含既没路径也没扩展名的空规则）查不到文件就是失效
+        final boolean projectWide = typeRule && !scoped;
+        final VirtualFile file = projectWide ? null : TreesUtils.findProjectFile(project, entity.getPath());
+        final boolean missing = !projectWide && null == file;
+        final String label = label(entity, typeRule, missing);
         if (label.isEmpty()) {
             return null;
         }
-        final MyTreeNode node = new MyTreeNode(label);
-        node.setUserEntity(entity);
-        final String extension = entity.getExtension();
-        final boolean typeRule = null != extension && !extension.trim().isEmpty();
-        final String path = entity.getPath();
-        //只写 extension 的全项目规则没有路径可查，永远算有效
-        if (typeRule && (null == path || path.trim().isEmpty())) {
-            return node.setIcon(extensionIcon(extension));
-        }
-        final VirtualFile file = TreesUtils.findProjectFile(project, path);
-        if (null == file) {
+        final MyTreeNode node = new MyTreeNode(label).setUserEntity(entity);
+        if (missing) {
             return node.setMissing(true).setIcon(fit(AllIcons.General.Error));
         }
+        //类型规则的 path 是限定目录，图标按它管的那类文件给
         if (typeRule) {
-            //目录级类型规则：路径是限定目录，图标按它管的那类文件给
             return node.setIcon(extensionIcon(extension));
         }
         if (file.isDirectory()) {
@@ -209,28 +206,42 @@ public class NoteTreeView extends Tree implements ToolWindowFactory {
     }
 
     /**
-     * 列表里显示的文字
+     * 列表里显示的文字，返回空串表示这条规则整个不进列表
      * <p>
-     * 备注（title）优先；没写备注但覆盖了显示名称（presentableText）的，就显示那个显示名，
-     * 免得整行空白。两个都没有时返回空串，调用方会把这条规则整个跳过。
+     * 用户写的东西优先：备注（title）→ 覆盖的显示名（presentableText）。类型规则再补上
+     * 「*.扩展名 @ 生效范围」，不然看不出它管的是哪一批文件。
      * </p>
      * <p>
-     * 类型规则不绑定单个文件，只显示备注看不出它管的是什么，所以补上扩展名和生效范围。
+     * 两个都没写的规则（只设了颜色 / 图标 / 删除线的那些）分两种情况：
      * </p>
+     * <ul>
+     *   <li><b>路径还在的不进列表</b>：效果在项目树上本来就看得见，列表里却只有空白一行，
+     *   认不出是哪条也点不动，而它的入口就在项目树的右键菜单上。</li>
+     *   <li><b>路径失效的必须进列表</b>：项目树上连节点都没有了，列表是用户唯一能发现并
+     *   清掉它的地方。没有文字可显示，就拿它配的路径当标题。</li>
+     * </ul>
      */
-    private static String label(XmlEntity entity) {
-        String title = null == entity.getTitle() ? "" : entity.getTitle().trim();
-        if (title.isEmpty()) {
-            title = null == entity.getPresentableText() ? "" : entity.getPresentableText().trim();
+    private static String label(XmlEntity entity, boolean typeRule, boolean missing) {
+        String text = trimmed(entity.getTitle());
+        if (text.isEmpty()) {
+            text = trimmed(entity.getPresentableText());
         }
-        final String extension = entity.getExtension();
-        if (null == extension || extension.trim().isEmpty()) {
-            return title;
+        if (typeRule) {
+            final String scope = trimmed(entity.getPath());
+            final String suffix = "*." + trimmed(entity.getExtension()) + " @ " + (scope.isEmpty() ? "整个项目" : scope);
+            if (!text.isEmpty()) {
+                return text + "  [" + suffix + "]";
+            }
+            return missing ? suffix : "";
         }
-        final String path = entity.getPath();
-        final String scope = null == path || path.trim().isEmpty() ? "整个项目" : path;
-        final String suffix = "*." + extension.trim() + " @ " + scope;
-        return title.isEmpty() ? suffix : title + "  [" + suffix + "]";
+        if (!text.isEmpty()) {
+            return text;
+        }
+        return missing ? trimmed(entity.getPath()) : "";
+    }
+
+    private static String trimmed(String value) {
+        return null == value ? "" : value.trim();
     }
 
     /**
