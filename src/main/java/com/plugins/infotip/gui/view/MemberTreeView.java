@@ -96,6 +96,17 @@ public class MemberTreeView extends Tree {
      */
     private static final int DEFAULT_CLICK_INTERVAL = 500;
 
+    /**
+     * 等第二下的时间上限
+     * <p>
+     * 系统的 {@code awt.multiClickInterval} 在 Windows 上是 500ms，直接拿它当等待时间太久——
+     * 点一个有子节点的成员要过半秒才跳，手感上像卡了一下（5.5.1 就是这样）。这两个值的含义本来
+     * 就不一样：系统值说的是「最长多久还算一次双击」，而这里要的是「多久之后可以确定不会有第二下」，
+     * 没必要等满。真正连着的两下基本落在 200ms 以内，所以取两者的较小值。
+     * </p>
+     */
+    private static final int MAX_CLICK_WAIT = 200;
+
     //region 节点类别
     private static final int KIND_OTHER = 0;
 
@@ -224,9 +235,9 @@ public class MemberTreeView extends Tree {
      * </p>
      * <p>
      * 但不能简单地把判断从双击改成单击：一次双击的第一下也是单击，照跳不误，那个毛病一点没变。
-     * 所以<b>有子节点的行要等一个系统双击间隔</b>（{@code awt.multiClickInterval}，Windows 上
-     * 通常 500ms），期间来了第二下就把排着的跳转撤掉，只留下收缩。<b>叶子节点立刻跳</b>——它没有
-     * 展开状态可切，双击对它没有别的含义，白等这 500ms 只会显得迟钝。
+     * 所以<b>有子节点的行要等一小会儿</b>（{@link #MAX_CLICK_WAIT}），期间来了第二下就把排着的
+     * 跳转撤掉，只留下收缩。<b>叶子节点立刻跳</b>——它没有展开状态可切，双击对它没有别的含义，
+     * 白等只会显得迟钝。
      * </p>
      * <p>
      * 节点从点击坐标取（{@link #getPathForLocation}）而不是从选中项取：点在展开箭头或行尾空白
@@ -263,7 +274,7 @@ public class MemberTreeView extends Tree {
     }
 
     /**
-     * 排一个延后的跳转：等一个系统双击间隔，没被第二下打断就跳
+     * 排一个延后的跳转：等 {@link #MAX_CLICK_WAIT} 那么久，没被第二下打断就跳
      */
     private Timer delayed(MemberNode node) {
         //javax.swing.Timer 的回调本来就在 EDT 上，不用再自己切线程
@@ -286,7 +297,9 @@ public class MemberTreeView extends Tree {
     private static int clickInterval() {
         final Object value = Toolkit.getDefaultToolkit().getDesktopProperty("awt.multiClickInterval");
         //这个属性在有些桌面环境上取不到，也可能是别的类型
-        return value instanceof Integer && (Integer) value > 0 ? (Integer) value : DEFAULT_CLICK_INTERVAL;
+        final int system = value instanceof Integer && (Integer) value > 0 ? (Integer) value : DEFAULT_CLICK_INTERVAL;
+        //系统值只当上限用：它比人手双击的实际间隔宽得多，等满了就显得卡，见 MAX_CLICK_WAIT
+        return Math.min(system, MAX_CLICK_WAIT);
     }
 
     /**

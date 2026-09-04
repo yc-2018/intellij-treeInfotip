@@ -121,9 +121,16 @@ public class NoteTreeView extends Tree {
     /**
      * 右键菜单：置顶 + 删除
      * <p>
-     * {@code installFollowingSelectionTreePopup} 会先把右键点到的那一行选上再弹菜单，所以
-     * action 里直接读选中项就行。别换成 {@code PopupHandler.installPopupHandler(...)}，
-     * 那几个重载在新版平台上全带删除标记，Plugin Verifier 会报出来。
+     * 右键点到的那一行会先被选上，所以 action 里直接读选中项就行。做这件事的是 {@link Tree}
+     * 自己的 {@code MyMouseListener}：右键落在<b>没选中</b>的行上就把选中改成那一行，落在
+     * <b>已选中</b>的行上则整批多选原样保留（{@code getSelectionPaths()} 里找到就直接
+     * return），所以 Ctrl 多选之后右键，{@link #selectedEntities()} 拿到的仍是整批。
+     * 它在 {@code Tree} 的构造里就注册了，比这里装的 popup handler 先跑。
+     * </p>
+     * <p>
+     * {@code installFollowingSelectionTreePopup} 自己只负责「点到选中的行才弹菜单」。别换成
+     * {@code PopupHandler.installPopupHandler(...)}，那几个重载在新版平台上全带删除标记，
+     * Plugin Verifier 会报出来。
      * </p>
      */
     private void installPopupMenu() {
@@ -213,15 +220,22 @@ public class NoteTreeView extends Tree {
     }
 
     /**
-     * 选中的全部规则，按住 Ctrl 多选可以一次删掉一批
+     * 选中的全部规则，按住 Ctrl 多选可以一次删掉或置顶一批
+     * <p>
+     * 按行号从上往下走，而不是读 {@code getSelectionPaths()}：那个返回的是点选的先后顺序，
+     * Ctrl 多选时和列表里看到的上下顺序不一定一致，而「置顶」要保持这批规则原来的相对顺序。
+     * </p>
      */
     private List<XmlEntity> selectedEntities() {
         final List<XmlEntity> entities = new ArrayList<>();
-        final TreePath[] paths = getSelectionPaths();
-        if (null == paths) {
-            return entities;
-        }
-        for (TreePath path : paths) {
+        for (int row = 0; row < getRowCount(); row++) {
+            if (!isRowSelected(row)) {
+                continue;
+            }
+            final TreePath path = getPathForRow(row);
+            if (null == path) {
+                continue;
+            }
             final Object component = path.getLastPathComponent();
             if (!(component instanceof MyTreeNode)) {
                 continue;
@@ -477,27 +491,31 @@ public class NoteTreeView extends Tree {
     }
 
     /**
-     * 右键菜单里的「置顶」，把这条 {@code <tree>} 挪到 {@code DirectoryV3.xml} 的最前面
+     * 右键菜单里的「置顶」，把选中的 {@code <tree>} 挪到 {@code DirectoryV3.xml} 的最前面
      * <p>
      * 标签在文件里的先后是有意义的：同优先级的多条规则命中同一个节点时，
      * {@code TreesUtils.getMatchPath} 让先遇到的那条赢。所以「置顶」不是单纯的列表排序，
      * 是真的改文件。
      * </p>
+     * <p>
+     * 按住 Ctrl 多选可以一次置顶一批，它们原来的相对顺序会保持住，见
+     * {@link XmlStorage#moveToTop(Project, List)}。
+     * </p>
      */
     private class MoveToTopAction extends AnAction {
 
         MoveToTopAction() {
-            super("置顶", "把这条规则挪到配置文件最前面，同优先级时它先生效", AllIcons.Actions.MoveUp);
+            super("置顶", "把选中的规则挪到配置文件最前面，同优先级时它们先生效", AllIcons.Actions.MoveUp);
         }
 
         @Override
         public void actionPerformed(@NotNull AnActionEvent e) {
-            final XmlEntity entity = selectedEntity();
-            if (null == entity) {
+            final List<XmlEntity> targets = selectedEntities();
+            if (targets.isEmpty()) {
                 return;
             }
-            //已经在第一条时 moveToTop 返回 false，不用白刷一次列表
-            if (XmlStorage.moveToTop(project, entity)) {
+            //已经在最前面时 moveToTop 返回 0，不用白刷一次列表
+            if (XmlStorage.moveToTop(project, targets) > 0) {
                 reload();
             }
         }

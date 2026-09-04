@@ -19,7 +19,7 @@
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.5.1</version>
+    <version>5.6.0</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -59,6 +59,17 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.6.0</p>
+        <li>侧边栏「TreeInfotip 备注」新增「说明」tab：右键菜单七项分别做什么、DirectoryV3.xml 的九个参数怎么写、命中优先级怎么算，都在这一页里，工具栏上还有一个按钮直接打开配置文件</li>
+        <li>新项目第一次加备注时自动建出的 DirectoryV3.xml，会在 &lt;trees&gt; 下面带一段注释说明 &lt;tree&gt; 的全部参数和命中优先级，手改文件时不用再去翻文档</li>
+        <li>「目录备注」列表右键「置顶」支持 Ctrl 多选，一次置顶一批并保持它们原来的相对顺序：以前多选也只有一条真的挪上去了</li>
+        <li>「文件成员」单击有子节点的成员时等待第二下的时间从系统双击间隔（Windows 上是 500 毫秒）压到 200 毫秒，点一下就跳、不再像卡了一下</li>
+        <li>New "说明" (Help) tab in the TreeInfotip Notes tool window: what each of the seven context-menu items does, all nine DirectoryV3.xml attributes, and how match priority is resolved — plus a toolbar button that opens the config file</li>
+        <li>The DirectoryV3.xml created for a new project now carries a comment under &lt;trees&gt; documenting every &lt;tree&gt; attribute and the match priority, so editing the file by hand no longer needs the docs</li>
+        <li>Move-to-top in the 目录备注 list now handles Ctrl multi-selection, moving the whole batch while preserving its relative order; previously only one rule actually moved</li>
+        <li>Clicking a member that has children in 文件成员 now waits 200 ms for a second click instead of the full system double-click interval (500 ms on Windows), so navigation no longer feels laggy</li>
+      </ul>
        <ul>
         <p>5.5.1</p>
         <li>修复「文件成员」点开成员跳转时报错 Read access is allowed from inside read-action only：求偏移量本身就要读 PSI，不能在读操作外面调 PsiElement.navigate，TS 的箭头函数上必崩</li>
