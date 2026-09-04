@@ -164,7 +164,13 @@ const CarrierRecruitRegPage: React.FC = () => {}
 
 结构视图给的是 **`JSFunctionExpression`（箭头函数）**，JSDoc 挂在整条 `JSVarStatement` 上，中间隔着 `const CarrierRecruitRegPage: React.FC =` 一串 token。老逻辑在 `leadingComments` 第二步碰到第一个非注释叶子（`=`）就 `break`，所以这三种写法一条注释都读不出来：`const X = () => {}`（箭头函数）、`const x = {...}`（对象字面量变量）、多行 JSDoc + 箭头函数。
 
-`carrier` 往上走的**唯一条件是「父节点的开头和当前元素在同一行」**（`sameLineStart`），层数上限 `MAX_LIFT = 4`。选这条判据的原因是它语言无关又天然安全：Java 里类的第一个方法，`class X {` 到方法之间必然有换行，所以抬不上去，类的 JavaDoc 不会被认成方法的注释。`sameLineStart` 逐叶子往前走而不是切 `getText()`（父节点是个类时太贵），并且**半路遇到注释就当作已经到开头**——少了这一条，JSDoc 作为语句第一个子节点的那种挂法会因为多行 JSDoc 里的换行被判成跨行，白抬一趟。已知的误报是挤在一行里的对象字面量 `{a: 1, b: 2}`，属性会抬到字面量本身，宁可多显示一句也不要少显示。
+`carrier` 往上走的条件是**「当前元素就在父节点的开头」**（`startsParent`），层数上限 `MAX_LIFT = 4`，走到 `PsiFile` 停。「在开头」的判定是从当前元素往前逐个叶子走（`prevLeaf`），走出父节点的起始偏移量就算通过：
+
+- **注释一律跳过**，它正是要找的东西，隔了几行也不影响判定。少了这一条，JSDoc 作为语句第一个子节点的那种挂法会被多行 JSDoc 自己的换行判成跨行，白抬一趟；反过来把「遇到注释」当成「已经到开头」也不行，那会抬过一条本属于当前元素的同行注释，把它丢掉。
+- 其余实质 token **只要和当前元素之间夹了换行就判否**（`crossedLine` 标记）。夹了换行又夹着实质代码，说明父节点是更大的结构（类、代码块、多行对象字面量），它的注释不属于当前成员。Java 里类的第一个方法就是靠这条过不了——`class X {` 的花括号和方法之间必然有换行。
+- 逐叶子走而不是切 `getText()`：父节点是个类的时候要把整个类的源码拼成字符串，太贵。压缩过的 js 整个文件只有一行，靠 `MAX_WALK = 64` 兜住，走太远就不再判断。
+
+已知的误报是挤在一行里的对象字面量 `{a: 1, b: 2}`，属性会抬到字面量本身，宁可多显示一句也不要少显示。
 
 `clean()` 里 `@param` / `@return` 这类标签行单独攒一份：正文有内容就只要正文，正文全是标签才退回去用它们，总比显示空白好。显示长度上限 `MAX_LENGTH = 120`。
 
@@ -282,6 +288,7 @@ Marketplace 的插件名始终从 `plugin.xml` 读，网页后台改不了，所
 - 右键菜单用 `PopupHandler.installFollowingSelectionTreePopup(JTree, ActionGroup, String)`——它会先把右键点到的那一行选上再弹菜单，action 里直接读选中项就行。**别换成 `PopupHandler.installPopupHandler(...)`**，那几个重载在新版平台上全带删除标记，Plugin Verifier 会报出来。工具栏和右键菜单的 `place` 字符串（`TreeInfotipNoteListToolbar` 等）只用于 action 事件溯源，**不是全局注册的 id**，不受重名限制。
 - 侧边栏列表的显示规则**是不对称的**（5.4.0 起，5.4.1 收紧）：`label()` 先取用户写的文字（`title` → `presentableText` 兜底），两个都空时按路径存不存在分岔——**路径还在的返回空串**，`buildNode` 直接返回 `null` 不进列表（效果在项目树上本来就看得见，列表里却只有空白一行，认不出是哪条也点不动，而它的入口就在项目树的右键菜单上）；**路径已失效的必须进列表**，没有文字就拿它配的路径当标题（普通规则）或 `*.扩展名 @ 生效范围`（类型规则），因为项目树上连节点都没有了，列表是用户唯一能发现并清掉它的地方。只设了颜色/图标/删除线的规则就属于「没有文字」这一类，**按扩展名批量设置的规则也一样按这条走**（5.4.0 曾无条件给类型规则显示 `*.ts @ /src/x` 后缀，5.4.1 改成只在失效时显示）。因此 `buildNode` 里必须先算 `missing` 再决定跳不跳，`label(entity, typeRule, missing)` 三个参数都是必需的。只写 `extension` 的全项目规则没有路径可查，永远算有效，所以它没写文字时也不进列表。
 - 侧边栏双击**一定要有反应**（5.4.0 起）：`navigate()` 先自己查一次 VFS，能落到真实文件就 `TreesUtils.Navigation`，否则跳 `DirectoryV3.xml` 里这条规则所在的行。这里**不要看 `MyTreeNode.isMissing()`**——那个状态是建节点时算的，建完之后在 IDE 外面删文件不会刷新，照它判断会把已经失效的当成有效去跳，又变成没反应。跳 XML 的偏移量取自解析时存在 `XmlEntity.tag` 上的 `XmlTag`（`getTextOffset()`），行号一定对得上，不用自己在文本里找；`tag` 失效时退到 `XmlFileUtils.getXmlFile(project)` 的文件开头。读 PSI 那段要包在 `runReadAction` 里，`new OpenFileDescriptor(project, file, offset).navigate(true)` 要在读操作**外面**调。3 参构造和 `navigate(boolean)` 在 2022.3.2 和 2026.2.1 上都不带任何注解；同类里 `IntSupplier` 重载、`navigateInEditor`、`navigateIn` 在 2026.2 是 internal，别用。
+- **「文件成员」是单击跳转、双击收缩**（5.5.1 起，5.5.0 是双击跳转）。双击跳转和树自带的展开切换撞在一起，双击一个有子节点的成员会「又收缩又定位」。但**不能简单改成单击就跳**：一次双击的第一下也是单击，照跳不误。做法是**有子节点的行等一个系统双击间隔**（`Toolkit.getDesktopProperty("awt.multiClickInterval")`，取不到按 500ms），期间来了第二下就 `Timer.stop()` 撤掉跳转；**叶子立刻跳**，它没有展开状态可切，白等只会显得迟钝。`javax.swing.Timer` 的回调本来就在 EDT 上（注意别 import 成 `java.util.Timer`）。另外**节点要从点击坐标取**（`getPathForLocation`）而不是读选中项：点在展开箭头或行尾空白处时它返回 `null`，正好把「点箭头收缩」和「点成员跳转」分开，读选中项的话点箭头会跳到上一次选中的成员上去。`reload()` 开头也要撤一次，整棵树都换了，排着队的跳转指向的是旧节点。
 - **工具窗口和菜单图标不引 `AllIcons`，用仓库自带的 svg**（5.4.0 起）。理由和历史事故一样：反射不到的 `AllIcons` 字段会在新版 IDE 上凭空消失。两条约定：
   - **主题适配靠 `_dark` 文件名后缀，不写代码**。`icons/treeNote.svg`（`#6C707E`，浅色主题的标准图标灰）+ `icons/treeNote_dark.svg`（`#FFFFFF`），`plugin.xml` 里只声明 `/icons/treeNote.svg` 一个路径，平台自己去找 `_dark` 的那个。改图形时两个文件都要改。彩色图标（`icons/addNote.svg`）不需要 `_dark` 变体。工具窗口图标必须是单色 16×16，彩色 logo 缩到 16 会糊。
   - **SVG 根标签声明的 `width` / `height` 决定逻辑尺寸**，平台的 SvgLoader 按它算。外面拿来的图常常是 128×128，只改这两个属性成 16 就行，`viewBox` 不用动（`addNote.svg` 的 viewBox 还是 1024），不改会把菜单行整个撑高。

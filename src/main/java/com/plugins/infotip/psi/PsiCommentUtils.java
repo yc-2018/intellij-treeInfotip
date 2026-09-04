@@ -39,6 +39,12 @@ public class PsiCommentUtils {
     private static final int MAX_LIFT = 4;
 
     /**
+     * {@link #startsParent} 往前走的叶子数上限。压缩过的 js 整个文件就一行，不设上限会一路
+     * 走到文件开头
+     */
+    private static final int MAX_WALK = 64;
+
+    /**
      * 读注释，找不到返回空串
      *
      * @param element 方法 / 属性 / 类的 PSI 元素
@@ -101,17 +107,18 @@ public class PsiCommentUtils {
      * 永远找不到。所以先往上走到语句那一层再找。
      * </p>
      * <p>
-     * 往上走的条件是<b>父节点的开头和当前元素在同一行</b>：中间夹了换行就说明父节点是更大的
-     * 结构（类、代码块、多行的对象字面量），它的注释不属于当前这个成员。Java 里类的第一个方法
-     * 就是靠这条不把类的 JavaDoc 认成方法的注释。代价是挤在一行里的对象字面量
-     * （{@code {a: 1, b: 2}}）的属性会抬到字面量本身，宁可多显示一句也不要少显示。
+     * 往上走的条件是<b>当前元素就在父节点的开头</b>，即中间只隔着同一行的 token 和注释。中间
+     * 夹了换行又夹着实质代码，就说明父节点是更大的结构（类、代码块、多行的对象字面量），它的
+     * 注释不属于当前这个成员。Java 里类的第一个方法就是靠这条不把类的 JavaDoc 认成方法的注释。
+     * 代价是挤在一行里的对象字面量（{@code {a: 1, b: 2}}）的属性会抬到字面量本身，宁可多显示
+     * 一句也不要少显示。
      * </p>
      */
     private static PsiElement carrier(PsiElement element) {
         PsiElement current = element;
         for (int lifted = 0; lifted < MAX_LIFT; lifted++) {
             final PsiElement parent = current.getParent();
-            if (null == parent || parent instanceof PsiFile || !sameLineStart(parent, current)) {
+            if (null == parent || parent instanceof PsiFile || !startsParent(parent, current)) {
                 break;
             }
             current = parent;
@@ -120,31 +127,43 @@ public class PsiCommentUtils {
     }
 
     /**
-     * 从 {@code current} 往前走到 {@code parent} 的开头，中间有没有跨行
+     * {@code current} 是不是就在 {@code parent} 的开头——中间只隔着同一行的 token 和注释
      * <p>
-     * 逐个叶子走而不是直接切文本：{@code getText()} 会把整个父节点的源码拼成字符串，父节点
-     * 是个类的时候太贵。这里走的步数就是同一行上那几个 token。
+     * 逐个叶子往前走而不是直接切 {@code getText()}：父节点是个类的时候要把整个类的源码拼成
+     * 字符串，太贵。正常情况走的步数就是同一行上那几个 token 加上一条注释，压缩过的 js 整个
+     * 文件只有一行，靠 {@link #MAX_WALK} 兜住。
      * </p>
      * <p>
-     * 半路遇到注释就<b>当作已经到开头</b>，因为那正是要找的东西。少了这一条，JSDoc 作为语句
-     * 第一个子节点的那种挂法（多行 JSDoc 里全是换行）会被判成跨行，白抬一趟。
+     * <b>注释一律跳过</b>（它正是要找的东西，隔了几行都算），其余实质 token <b>只要和当前元素
+     * 之间夹了换行就判否</b>。JSDoc 的两种挂法因此都能过：挂成语句第一个子节点时，夹在中间的
+     * {@code const} 和当前元素同行、换行只出现在注释那一侧；挂成前一个兄弟时，走到 {@code const}
+     * 之前就已经出了父节点的范围。而 Java 里类的第一个方法过不了——{@code class X} 的花括号和
+     * 方法之间必然有换行。
      * </p>
      */
-    private static boolean sameLineStart(PsiElement parent, PsiElement current) {
+    private static boolean startsParent(PsiElement parent, PsiElement current) {
         final int start = parent.getTextRange().getStartOffset();
-        for (PsiElement leaf = PsiTreeUtil.prevLeaf(current, true); null != leaf; leaf = PsiTreeUtil.prevLeaf(leaf, true)) {
+        boolean crossedLine = false;
+        PsiElement leaf = PsiTreeUtil.prevLeaf(current, true);
+        for (int walked = 0; null != leaf && walked < MAX_WALK; walked++, leaf = PsiTreeUtil.prevLeaf(leaf, true)) {
             //已经走出 parent 的范围，说明 current 就在 parent 的开头
             if (leaf.getTextRange().getStartOffset() < start) {
                 return true;
             }
             if (null != PsiTreeUtil.getParentOfType(leaf, PsiComment.class, false)) {
-                return true;
+                continue;
             }
             if (leaf.getText().indexOf('\n') >= 0) {
+                crossedLine = true;
+                continue;
+            }
+            //换行另一侧的实质代码不属于当前元素的声明
+            if (crossedLine && !(leaf instanceof PsiWhiteSpace)) {
                 return false;
             }
         }
-        return true;
+        //一路走到文件开头都没遇到别的代码，或者走得太远不再判断
+        return null == leaf;
     }
 
     /**

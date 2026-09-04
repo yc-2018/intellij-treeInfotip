@@ -33,7 +33,7 @@ public class MemberNode extends DefaultMutableTreeNode {
     private Icon icon;
 
     /**
-     * 双击跳转用。文件一改就可能失效，用之前必须查 {@code isValid()}
+     * 单击跳转用。文件一改就可能失效，用之前必须查 {@code isValid()}
      */
     private PsiElement element;
 

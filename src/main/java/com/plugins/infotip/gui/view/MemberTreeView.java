@@ -40,10 +40,12 @@ import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JSlider;
 import javax.swing.JTree;
+import javax.swing.Timer;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
 import java.awt.FlowLayout;
+import java.awt.Toolkit;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
@@ -89,6 +91,11 @@ public class MemberTreeView extends Tree {
      */
     private static final int MAX_NODES = 3000;
 
+    /**
+     * 取不到系统双击间隔（{@code awt.multiClickInterval}）时用的默认值，和 Swing 自己的默认值一致
+     */
+    private static final int DEFAULT_CLICK_INTERVAL = 500;
+
     //region 节点类别
     private static final int KIND_OTHER = 0;
 
@@ -111,6 +118,11 @@ public class MemberTreeView extends Tree {
      * 本次 {@link #reload()} 已经建了多少个节点，用来卡 {@link #MAX_NODES}
      */
     private int nodes;
+
+    /**
+     * 正排着队等双击间隔过去的那次跳转，{@code null} 表示当前没有。见 {@link #installNavigation()}
+     */
+    private Timer pendingClick;
 
     private MemberTreeView(@NotNull Project project) {
         super(new DefaultMutableTreeNode("文件成员"));
@@ -205,24 +217,76 @@ public class MemberTreeView extends Tree {
     }
 
     /**
-     * 双击跳到成员的定义处
+     * 单击跳到成员的定义处，双击留给树自己收缩 / 展开
+     * <p>
+     * 5.5.0 把跳转挂在双击上，而树自己也在双击时切换展开状态，所以双击一个有子节点的成员会
+     * 「又收缩又定位」，两件事一起发生。
+     * </p>
+     * <p>
+     * 但不能简单地把判断从双击改成单击：一次双击的第一下也是单击，照跳不误，那个毛病一点没变。
+     * 所以<b>有子节点的行要等一个系统双击间隔</b>（{@code awt.multiClickInterval}，Windows 上
+     * 通常 500ms），期间来了第二下就把排着的跳转撤掉，只留下收缩。<b>叶子节点立刻跳</b>——它没有
+     * 展开状态可切，双击对它没有别的含义，白等这 500ms 只会显得迟钝。
+     * </p>
+     * <p>
+     * 节点从点击坐标取（{@link #getPathForLocation}）而不是从选中项取：点在展开箭头或行尾空白
+     * 处时它返回 {@code null}，正好把「点箭头收缩」和「点成员跳转」分开；读选中项的话点箭头会
+     * 跳到上一次选中的那个成员上去。
+     * </p>
      */
     private void installNavigation() {
         addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
-                if (2 != e.getClickCount()) {
+                if (MouseEvent.BUTTON1 != e.getButton()) {
+                    cancelPending();
                     return;
                 }
-                if (!(getLastSelectedPathComponent() instanceof MemberNode)) {
+                final TreePath path = getPathForLocation(e.getX(), e.getY());
+                if (null == path || !(path.getLastPathComponent() instanceof MemberNode)) {
+                    //点在展开箭头、提示行或空白处，交给树自己处理
                     return;
                 }
-                final PsiElement element = ((MemberNode) getLastSelectedPathComponent()).getElement();
-                if (null != element) {
-                    navigate(element);
+                //第二下先把第一下排的队撤掉，剩下的收缩由树自己做
+                cancelPending();
+                if (1 != e.getClickCount()) {
+                    return;
                 }
+                final MemberNode node = (MemberNode) path.getLastPathComponent();
+                if (node.isLeaf()) {
+                    navigate(node.getElement());
+                    return;
+                }
+                pendingClick = delayed(node);
             }
         });
+    }
+
+    /**
+     * 排一个延后的跳转：等一个系统双击间隔，没被第二下打断就跳
+     */
+    private Timer delayed(MemberNode node) {
+        //javax.swing.Timer 的回调本来就在 EDT 上，不用再自己切线程
+        final Timer timer = new Timer(clickInterval(), e -> {
+            pendingClick = null;
+            navigate(node.getElement());
+        });
+        timer.setRepeats(false);
+        timer.start();
+        return timer;
+    }
+
+    private void cancelPending() {
+        if (null != pendingClick) {
+            pendingClick.stop();
+            pendingClick = null;
+        }
+    }
+
+    private static int clickInterval() {
+        final Object value = Toolkit.getDefaultToolkit().getDesktopProperty("awt.multiClickInterval");
+        //这个属性在有些桌面环境上取不到，也可能是别的类型
+        return value instanceof Integer && (Integer) value > 0 ? (Integer) value : DEFAULT_CLICK_INTERVAL;
     }
 
     /**
@@ -242,6 +306,9 @@ public class MemberTreeView extends Tree {
      * </p>
      */
     private void navigate(PsiElement element) {
+        if (null == element) {
+            return;
+        }
         final VirtualFile[] file = {null};
         final int[] offset = {0};
         //lambda 体必须写成语句块，写成赋值表达式会在 runReadAction 的三个重载之间歧义
@@ -267,6 +334,8 @@ public class MemberTreeView extends Tree {
      * 重建整棵树。切文件、点刷新、改勾选、拖完拉杆都走这里
      */
     private void reload() {
+        //整棵树都要重建，排着队的跳转指向的是旧节点，撤掉
+        cancelPending();
         final DefaultMutableTreeNode root = (DefaultMutableTreeNode) getModel().getRoot();
         root.removeAllChildren();
         nodes = 0;
