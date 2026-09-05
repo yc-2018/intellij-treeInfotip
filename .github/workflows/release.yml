@@ -59,6 +59,12 @@ jobs:
           fi
           echo "Releasing TreeInfotip $version"
 
+      - name: Inject Chinese name for release
+        run: |
+          sed -i 's|<name>TreeInfotip Notes</name>|<name>TreeInfotip Notes / 目录树备注</name>|' \
+            src/main/resources/META-INF/plugin.xml
+          echo "Plugin name updated for Marketplace"
+
       - name: Build plugin
         run: gradle --no-daemon clean buildPlugin verifyPlugin
 
