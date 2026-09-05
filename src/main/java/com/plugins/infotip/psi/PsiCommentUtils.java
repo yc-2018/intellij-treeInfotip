@@ -210,6 +210,13 @@ public class PsiCommentUtils {
             }
             final PsiComment comment = PsiTreeUtil.getParentOfType(leaf, PsiComment.class, false);
             if (null == comment) {
+                //遇到非注释、非空白的叶子（实质代码），检查它和最后收集到的注释是否在同一行
+                if (null != last && onSameLine(leaf, last)) {
+                    //在同一行，说明那条注释是上一行代码的行尾注释，不属于当前元素，移除它
+                    if (!result.isEmpty()) {
+                        result.remove(result.size() - 1);
+                    }
+                }
                 break;
             }
             //复合注释的每个叶子都会走到这儿，同一条只收一次
@@ -260,6 +267,26 @@ public class PsiCommentUtils {
      */
     private static boolean blankLine(String text) {
         return text.indexOf('\n') != text.lastIndexOf('\n');
+    }
+
+    /**
+     * 两个元素是否在同一行（中间没有换行符）
+     */
+    private static boolean onSameLine(PsiElement a, PsiElement b) {
+        if (null == a || null == b) {
+            return false;
+        }
+        final int end = Math.max(a.getTextRange().getEndOffset(), b.getTextRange().getEndOffset());
+        //从较早的元素往后走到较晚的元素，中间遇到换行就判否
+        for (PsiElement leaf = a.getTextRange().getStartOffset() < b.getTextRange().getStartOffset() ? a : b;
+             null != leaf && leaf.getTextRange().getStartOffset() < end;
+             leaf = PsiTreeUtil.nextLeaf(leaf, true)) {
+            final String text = leaf.getText();
+            if (null != text && text.indexOf('\n') >= 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean isDoc(String raw) {

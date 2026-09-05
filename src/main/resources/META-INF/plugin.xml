@@ -19,7 +19,7 @@
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.7.1</version>
+    <version>5.7.2</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -59,6 +59,11 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.7.2</p>
+        <li>修复注释提取：上一行代码的行尾注释不再被下一行元素误认为前置注释（「文件成员」列表里每项后面跟的注释现在判断更准确）</li>
+        <li>Fixed comment extraction: trailing comments from a previous line of code are no longer incorrectly treated as leading comments for the next element</li>
+      </ul>
        <ul>
         <p>5.7.1</p>
         <li>修复删除 DirectoryV3.xml 后点刷新报错 NPE：PsiElement.getText() 在元素失效时会返回 null，现在统一检查</li>
