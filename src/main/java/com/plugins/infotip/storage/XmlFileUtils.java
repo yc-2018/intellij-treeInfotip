@@ -167,7 +167,7 @@ public class XmlFileUtils {
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
             "<trees>",
             "    <!--",
-            "      TreeInfotip 的配置文件：一条 <tree> 就是一条规则，存盘立刻生效，不用重启 IDE。",
+            "      TreeInfotip Notes 的配置文件：一条 <tree> 就是一条规则，存盘立刻生效，不用重启 IDE。",
             "      平时不用手写，右键项目树上的文件或目录，走「目录备注」菜单加就行。",
             "",
             "      参数全是可选的，按需要写几个：",

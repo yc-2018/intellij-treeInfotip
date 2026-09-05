@@ -187,7 +187,10 @@ public class PsiCommentUtils {
                 continue;
             }
             if (child instanceof PsiComment) {
-                result.add(child.getText());
+                final String text = child.getText();
+                if (null != text) {
+                    result.add(text);
+                }
                 continue;
             }
             //第一个不是注释也不是空白的子节点，头部就到这儿了
@@ -199,7 +202,8 @@ public class PsiCommentUtils {
         PsiComment last = null;
         for (PsiElement leaf = PsiTreeUtil.prevLeaf(element, true); null != leaf; leaf = PsiTreeUtil.prevLeaf(leaf, true)) {
             if (leaf instanceof PsiWhiteSpace) {
-                if (blankLine(leaf.getText())) {
+                final String text = leaf.getText();
+                if (null == text || blankLine(text)) {
                     break;
                 }
                 continue;
@@ -210,7 +214,10 @@ public class PsiCommentUtils {
             }
             //复合注释的每个叶子都会走到这儿，同一条只收一次
             if (comment != last) {
-                result.add(0, comment.getText());
+                final String text = comment.getText();
+                if (null != text) {
+                    result.add(0, text);
+                }
                 last = comment;
             }
         }
@@ -220,7 +227,7 @@ public class PsiCommentUtils {
     /**
      * 同行尾部的单行注释
      * <p>
-     * 从元素最深处的第一个叶子往后走，一碰到带换行的叶子就停——「同行」就是这个意思。
+     * 从元素最深处的第一个叶子往后走,一碰到带换行的叶子就停——「同行」就是这个意思。
      * 一路上遇到的第一条单行注释就是要的那条。
      * </p>
      */
@@ -230,13 +237,18 @@ public class PsiCommentUtils {
             leaf = leaf.getFirstChild();
         }
         for (; null != leaf; leaf = PsiTreeUtil.nextLeaf(leaf, true)) {
-            if (leaf instanceof PsiComment && isLine(leaf.getText())) {
-                final String text = clean(leaf.getText());
-                if (!text.isEmpty()) {
-                    return text;
+            final String text = leaf.getText();
+            //PSI 元素失效时 getText() 会返回 null（比如文件被删了）
+            if (null == text) {
+                break;
+            }
+            if (leaf instanceof PsiComment && isLine(text)) {
+                final String cleaned = clean(text);
+                if (!cleaned.isEmpty()) {
+                    return cleaned;
                 }
             }
-            if (leaf.getText().indexOf('\n') >= 0) {
+            if (text.indexOf('\n') >= 0) {
                 break;
             }
         }

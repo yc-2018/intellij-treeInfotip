@@ -19,7 +19,7 @@
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.7.0</version>
+    <version>5.7.1</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -59,6 +59,13 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+       <ul>
+        <p>5.7.1</p>
+        <li>修复删除 DirectoryV3.xml 后点刷新报错 NPE：PsiElement.getText() 在元素失效时会返回 null，现在统一检查</li>
+        <li>新建的 DirectoryV3.xml 注释里把「TreeInfotip 的配置文件」改成「TreeInfotip Notes 的配置文件」</li>
+        <li>Fixed a crash when refreshing after DirectoryV3.xml is deleted: PsiElement.getText() can return null for invalid elements, now checked everywhere</li>
+        <li>The comment in newly created DirectoryV3.xml now says "TreeInfotip Notes" instead of just "TreeInfotip"</li>
+      </ul>
        <ul>
         <p>5.7.0</p>
         <li>「目录备注」列表的右键菜单整行都能点：以前只有点在备注文字上才弹得出来，点行尾的空白处没反应</li>
