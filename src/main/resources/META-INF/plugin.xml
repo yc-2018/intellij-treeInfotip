@@ -19,7 +19,7 @@
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.7.4</version>
+    <version>5.7.5</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -83,6 +83,17 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+      <ul>
+        <p>5.7.5</p>
+        <li>修复「TreeInfoTip Notes XML」窗口点「保存」在新版 IDE 上报 Read access is allowed from inside read-action
+          only：读取 PSI 那一步现在自己包了读操作
+        </li>
+        <li>「保存」改走 IDE 的虚拟文件系统，不再绕过它直接写磁盘：保存能用 Ctrl+Z 撤销，文件正在编辑器里开着时也不会和手上的改动互相覆盖，配置改动即时生效</li>
+        <li>Fixed "Read access is allowed from inside read-action only" when clicking Save in the XML tool window</li>
+        <li>Save now goes through the IDE virtual file system instead of writing to disk directly: undo works, edits no
+          longer clash with the file open in an editor, and changes take effect immediately
+        </li>
+      </ul>
       <ul>
         <p>5.7.3</p>
         <li>插件名称、工具窗口和通知组统一使用 TreeInfoTip Notes，同步更新帮助说明、配置文件模板及发布产物名称</li>

@@ -1,6 +1,7 @@
 package com.plugins.infotip.storage;
 
 import com.intellij.openapi.actionSystem.AnActionEvent;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.fileTypes.LanguageFileType;
 import com.intellij.openapi.project.Project;
@@ -216,15 +217,39 @@ public class XmlFileUtils {
         }
         File f = new File(project.getBasePath() + File.separator + XMLFileName);
         VirtualFile virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(f);
-        if (null != virtualFile) {
-            //virtualFile.refresh(false, true);
-            PsiFile file = PsiManager.getInstance(project).findFile(virtualFile);
-            if (file instanceof XmlFile) {
-                XML_STORAGE_File.put(project, (XmlFile) file);
-                return (XmlFile) file;
-            }
+        if (null == virtualFile) {
+            return null;
         }
-        return null;
+        //virtualFile.refresh(false, true);
+        final XmlFile xmlFile = findXmlPsi(project, virtualFile);
+        if (null != xmlFile) {
+            XML_STORAGE_File.put(project, xmlFile);
+        }
+        return xmlFile;
+    }
+
+    /**
+     * 把 {@link VirtualFile} 转成 PSI
+     *
+     * <p>
+     * 读 PSI 要读锁，而新版平台的 EDT 不再隐式持有它，从 Swing 监听器调过来就会抛
+     * {@code Read access is allowed from inside read-action only}。所以在这里自己包一层读操作，
+     * 每个调用点就不用各自记得包了。
+     * </p>
+     * <p>
+     * VFS 刷新必须留在这个方法<b>外面</b>：同步刷新自己要开写操作，套进读操作里是换一个错。
+     * </p>
+     *
+     * @param project     项目
+     * @param virtualFile 文件
+     * @return XmlFile，不是 XML 就返回 null
+     */
+    private static XmlFile findXmlPsi(Project project, VirtualFile virtualFile) {
+        final PsiFile[] holder = new PsiFile[1];
+        ApplicationManager.getApplication().runReadAction(() -> {
+            holder[0] = PsiManager.getInstance(project).findFile(virtualFile);
+        });
+        return holder[0] instanceof XmlFile ? (XmlFile) holder[0] : null;
     }
 
     /**
@@ -300,13 +325,13 @@ public class XmlFileUtils {
         VirtualFile virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(f);
         if (null != virtualFile) {
             virtualFile.refresh(false, true);
-            PsiFile file = PsiManager.getInstance(project).findFile(virtualFile);
-            if (file instanceof XmlFile) {
-                XML_STORAGE_File.put(project, (XmlFile) file);
+            final XmlFile xmlFile = findXmlPsi(project, virtualFile);
+            if (null != xmlFile) {
+                XML_STORAGE_File.put(project, xmlFile);
                 for (Map.Entry<Object, SaveCallback> objectSaveCallbackEntry : callbackList.entrySet()) {
                     objectSaveCallbackEntry.getValue().run();
                 }
-                return (XmlFile) file;
+                return xmlFile;
             }
         }
         return null;
