@@ -12,9 +12,13 @@ import com.intellij.psi.xml.XmlDocument;
 import com.intellij.psi.xml.XmlFile;
 import com.intellij.psi.xml.XmlTag;
 
+import java.io.File;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 路径前缀的抽离与还原：改 XML 那一半
@@ -71,7 +75,12 @@ public final class PathPrefixEditor {
         }
         final String[] result = new String[1];
         ApplicationManager.getApplication().runWriteAction(() -> {
-            //先在同一棵 PSI 上把已有前缀展开，再按当前配置重算一遍最优前缀。
+            //先记下文件里已有的 id：用户手改过的名字要留着，不能被重新抽离打回自动生成的
+            final Map<String, String> keepIds = new LinkedHashMap<>();
+            for (Map.Entry<String, String> entry : XmlStorage.readPrefixes(file).entrySet()) {
+                keepIds.put(entry.getValue(), entry.getKey());
+            }
+            //在同一棵 PSI 上把已有前缀展开，再按当前配置重算一遍最优前缀。
             //所以重复点「抽离」不会把前缀叠起来，改过配置之后也能重新抽
             flatten(file, rootTag);
 
@@ -80,7 +89,7 @@ public final class PathPrefixEditor {
             for (XmlTag tree : trees) {
                 paths.add(tree.getAttributeValue(XmlStorage.PATH));
             }
-            final PathPrefixes.Plan plan = PathPrefixes.plan(paths);
+            final PathPrefixes.Plan plan = PathPrefixes.plan(paths, keepIds);
             if (!plan.isEmpty()) {
                 //前缀表拼成带换行的文本再建标签：一条 prefix 一行，用户打开文件第一眼就看清 id 对应什么。
                 //光靠 setAttribute 建出来的会全挤在一行
@@ -176,6 +185,122 @@ public final class PathPrefixEditor {
         for (XmlTag holder : rootTag.findSubTags(XmlStorage.PREFIXES)) {
             holder.delete();
         }
+    }
+
+    /**
+     * 给每条 {@code <prefix>} 声明体检：路径还在不在、有没有规则引用它
+     *
+     * <p>
+     * 失效的前缀在别处是看不出来的——「目录备注」列表标红的是规则，而一条前缀失效意味着
+     * 底下一批规则<b>一起</b>失效，光看列表不知道根因在前缀上。没人引用的声明则是手改文件
+     * 或者改过配置之后留下的垃圾，不影响功能但会越积越多。
+     * </p>
+     *
+     * @param project 项目，用来判断路径在磁盘上还在不在
+     * @param xmlText 配置文件文本
+     * @return 每条声明一项，顺序和文件里一致；不是配置文件就返回空表
+     */
+    public static List<PrefixIssue> diagnose(Project project, String xmlText) {
+        final List<PrefixIssue> issues = new ArrayList<>();
+        final XmlFile file = parse(project, xmlText);
+        final XmlTag rootTag = rootTag(file);
+        if (null == rootTag) {
+            return issues;
+        }
+        //先数一遍每个 id 被引用了多少次
+        final Map<String, Integer> refs = new LinkedHashMap<>();
+        for (XmlTag tree : collectTrees(rootTag)) {
+            final String id = tree.getAttributeValue(XmlStorage.PREFIX);
+            if (null != id) {
+                refs.merge(id.trim(), 1, Integer::sum);
+            }
+        }
+        final String basePath = project.getBasePath();
+        for (XmlTag holder : rootTag.findSubTags(XmlStorage.PREFIXES)) {
+            for (XmlTag decl : holder.findSubTags(XmlStorage.PREFIX)) {
+                final String id = trimToEmpty(decl.getAttributeValue(XmlStorage.PREFIX_ID));
+                final String path = trimToEmpty(decl.getAttributeValue(XmlStorage.PATH));
+                if (id.isEmpty()) {
+                    continue;
+                }
+                //前缀一定是目录，存在性直接查磁盘。拿不到项目根路径时一律算「还在」，
+                //宁可漏报也不要把好前缀标成失效
+                final boolean dead = !basePath.isEmpty() && !path.isEmpty()
+                        && !new File(basePath + path.replace('/', File.separatorChar)).exists();
+                final int start = decl.getTextRange().getStartOffset();
+                final int end = decl.getTextRange().getEndOffset();
+                issues.add(new PrefixIssue(id, path, start, end,
+                        refs.getOrDefault(id, 0), dead));
+            }
+        }
+        return issues;
+    }
+
+    /**
+     * 清理有问题的前缀声明
+     *
+     * <p>
+     * 两种情况处理方式不同：
+     * </p>
+     * <ul>
+     *   <li><b>没人引用的</b>：只删声明本身，删了什么都不影响。</li>
+     *   <li><b>路径已失效的</b>：把声明<b>连同引用它的那些规则一起</b>删掉。只删声明会让那些规则
+     *       剩下半截相对路径、变成指向别处的错规则，比留着失效的更糟。</li>
+     * </ul>
+     *
+     * @param project 项目
+     * @param xmlText 配置文件文本
+     * @return 清理后的文本；没什么可清的就把原文本原样还回去
+     */
+    public static String cleanPrefixes(Project project, String xmlText) {
+        final XmlFile file = parse(project, xmlText);
+        final XmlTag rootTag = rootTag(file);
+        if (null == rootTag) {
+            return xmlText;
+        }
+        final List<PrefixIssue> issues = diagnose(project, xmlText);
+        final Set<String> deadIds = new HashSet<>();
+        final Set<String> dropIds = new HashSet<>();
+        for (PrefixIssue issue : issues) {
+            if (issue.isProblem()) {
+                dropIds.add(issue.getId());
+            }
+            if (issue.isDead()) {
+                deadIds.add(issue.getId());
+            }
+        }
+        if (dropIds.isEmpty()) {
+            return xmlText;
+        }
+        final String[] result = new String[1];
+        ApplicationManager.getApplication().runWriteAction(() -> {
+            //失效前缀底下那些规则先删：只删声明会把它们变成指向别处的错规则
+            for (XmlTag tree : collectTrees(rootTag)) {
+                final String id = tree.getAttributeValue(XmlStorage.PREFIX);
+                if (null != id && deadIds.contains(id.trim())) {
+                    tree.delete();
+                }
+            }
+            for (XmlTag holder : rootTag.findSubTags(XmlStorage.PREFIXES)) {
+                for (XmlTag decl : holder.findSubTags(XmlStorage.PREFIX)) {
+                    final String id = trimToEmpty(decl.getAttributeValue(XmlStorage.PREFIX_ID));
+                    if (dropIds.contains(id)) {
+                        decl.delete();
+                    }
+                }
+                //声明全删光了就把空的 <prefixes> 一起收掉
+                if (0 == holder.findSubTags(XmlStorage.PREFIX).length) {
+                    holder.delete();
+                }
+            }
+            CodeStyleManager.getInstance(project).reformat(rootTag);
+            result[0] = file.getText();
+        });
+        return null == result[0] ? xmlText : result[0];
+    }
+
+    private static String trimToEmpty(String value) {
+        return null == value ? "" : value.trim();
     }
 
     /**

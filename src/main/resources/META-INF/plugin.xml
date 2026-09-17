@@ -19,7 +19,7 @@
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>6.0.0</version>
+    <version>6.1.0</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -84,26 +84,53 @@
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
       <ul>
+        <p>6.1.0</p>
+        <li><b>配置文件改名推迟到「保存」那一刻</b>：开 IDE 不再动它。只有第一次点「抽离」并保存时才把
+          DirectoryV3.xml 改名为 DirectoryV6.xml，中途反悔文件名也没被动过，文件名和内容永远一致
+        </li>
+        <li>「抽离」的兼容性提醒<b>只在真的要改名时弹一次</b>，本来就是 DirectoryV6.xml 的、或者已经抽过再点一次的都不再打扰
+        </li>
+        <li>「还原」多给一个选择：<b>换回 DirectoryV3.xml</b> / 保留 DirectoryV6.xml / 取消。还原后内容旧版插件就能读了，文件名换不换由你定
+        </li>
+        <li>弹窗打开时给有问题的 prefix 声明<b>上底色</b>：红色是目录在磁盘上已经没有了，黄色是没有任何规则引用它。一条前缀失效意味着底下一批规则一起失效，光看「目录备注」列表看不出根因
+        </li>
+        <li>新增<b>「清理前缀」</b>按钮：没人引用的只删声明；路径失效的连引用它的规则一起删——只删声明会让那些规则剩下半截相对路径，变成指向别处的错规则
+        </li>
+        <li><b>手改过的 prefix id 会留着</b>：把 carrier5 改成「承运商基础包」之后再点一次「抽离」，不会被打回自动生成的名字
+        </li>
+        <li>「说明」tab 补了「抽离路径前缀」一整节，写清了抽离的判据（净收益为正，<b>没有「几条起步」的门槛</b>，前缀越长越容易够本，/src 这种再多条也抽不出来）
+        </li>
+        <li>Config file rename now happens only when you hit Save after Extract — never on IDE startup, so the file name
+          always matches its contents
+        </li>
+        <li>The compatibility warning is shown only when a rename will actually happen</li>
+        <li>Restore now offers three choices: rename back to DirectoryV3.xml, keep DirectoryV6.xml, or cancel</li>
+        <li>Broken (red) and unreferenced (yellow) prefix declarations are highlighted in the dialog, with a new "Clean
+          prefixes" button
+        </li>
+        <li>Hand-edited prefix ids are preserved when re-extracting</li>
+      </ul>
+      <ul>
         <p>6.0.0</p>
-        <li>配置文件改名为 <b>DirectoryV6.xml</b>，老的 DirectoryV3.xml 在 IDE 启动时自动改名过来，内容一个字不动，并发一条通知告知
+        <li>配置文件改名为 <b>DirectoryV6.xml</b>：第一次抽离路径前缀并保存时，老的 DirectoryV3.xml 会改名过来，内容一个字不动，并发一条通知告知
         </li>
         <li>新增<b>抽离路径前缀</b>：重复的长目录提到 &lt;prefixes&gt; 里只写一遍，每条规则只留剩下那截。真实数据实测 19
           条规则的路径部分从 1012 个字符降到 830 个
         </li>
-        <li>入口在侧边栏「目录备注」工具栏的「抽离或还原路径前缀」，点开是一个弹窗，直接显示配置文件正文；顶上三个按钮：抽离、还原、保存。抽离和还原只改弹窗里的内容，看清楚了再保存，不满意点「还原」或者直接关掉
+        <li>入口在侧边栏「目录备注」工具栏的「抽离或还原路径前缀」，点开是一个弹窗，直接显示配置文件正文；抽离和还原只改弹窗里的内容，看清楚了再保存，不满意点「还原」或者直接关掉
         </li>
         <li>去掉底部的「TreeInfoTip Notes XML」工具窗口：常驻占一栏、又只是偶尔用一次，内容收进了上面那个弹窗。「检查失效路径」由「目录备注」列表自带的标红代替，正则实现的「格式化」和「清理空属性」一并去掉（属性值里带
           &lt; &gt; 时它们本来就不安全）
         </li>
         <li>改名的原因：抽离过的文件旧版插件读不了——它不认 prefix 属性，会把剩下那截当成完整路径。换个文件名，新旧两版就各读各的，不会互相读坏
         </li>
-        <li>Renamed the config file to <b>DirectoryV6.xml</b>; an existing DirectoryV3.xml is renamed automatically on
-          startup, contents untouched
+        <li>Renamed the config file to <b>DirectoryV6.xml</b>; an existing DirectoryV3.xml is renamed the first time you
+          extract prefixes and save, contents untouched
         </li>
         <li>New: extract repeated path prefixes into a &lt;prefixes&gt; table, so a long shared directory is written once
         </li>
-        <li>New entry point in the "Directory notes" toolbar opens a dialog showing the config file, with Extract /
-          Restore / Save. Extract and Restore only change the dialog text — nothing is written until you hit Save
+        <li>New entry point in the "Directory notes" toolbar opens a dialog showing the config file. Extract and Restore
+          only change the dialog text — nothing is written until you hit Save
         </li>
         <li>Removed the bottom "TreeInfoTip Notes XML" tool window; its content moved into that dialog</li>
       </ul>

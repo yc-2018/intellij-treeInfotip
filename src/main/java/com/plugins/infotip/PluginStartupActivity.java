@@ -34,11 +34,8 @@ public class PluginStartupActivity implements StartupActivity {
 
     @Override
     public void runActivity(@NotNull Project project) {
-        //必须在第一次读之前：把老的 DirectoryV3.xml 改名成 V6。放在这里是因为改名要开写操作，
-        //而启动活动是唯一干净的上下文——别处的调用点有在写操作和 PSI 事件回调里的
-        if (XmlFileUtils.migrateLegacyFile(project)) {
-            XmlFileUtils.notifyMigrated(project);
-        }
+        //这里不动配置文件的名字。改名只在用户点了「抽离」并保存时才发生——开个 IDE 就把
+        //用户项目里一个会进版本库的文件改名，太唐突了，而且没抽离过的文件旧版读得好好的
         final XmlFile xmlFile = XmlFileUtils.loadXmlFile(project);
         XmlStorage.parsing(project, xmlFile);
         for (Map.Entry<Object, RunCallback> objectRunCallbackEntry : callbackList.entrySet()) {

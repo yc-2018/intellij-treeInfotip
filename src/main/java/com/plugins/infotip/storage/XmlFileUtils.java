@@ -41,10 +41,26 @@ public class XmlFileUtils {
      * <p>
      * 5.x 一直叫 {@code DirectoryV3.xml}，6.0.0 跟着大版本号改成 V6：抽离过路径前缀的文件旧版插件读不了
      * （它不认 {@code prefix} 属性，会把相对部分当成完整路径），换个名字就让新旧两版各找各的文件，
-     * 不会互相读坏。老文件由 {@link #migrateLegacyFile} 在启动时改名过来。
+     * 不会互相读坏。老文件<b>不在启动时改名</b>——没抽离过的文件旧版读得好好的，开个 IDE 就把用户
+     * 项目里一个会进版本库的文件改名太唐突。改名只在用户点了「抽离」并保存时才由
+     * {@link #renameConfigFile} 做，见 {@code XmlPrefixDialog}。
      * </p>
      */
     private static final String XMLFileName = "DirectoryV6.xml";
+
+    /**
+     * 现在用的文件名，给界面文案用
+     */
+    public static String currentFileName() {
+        return XMLFileName;
+    }
+
+    /**
+     * 老的文件名，给界面文案用
+     */
+    public static String legacyFileName() {
+        return LEGACY_XML_FILE_NAME;
+    }
 
     /**
      * 5.x 及之前的文件名，只在还没有 V6 时读它，读到就改名
@@ -209,6 +225,9 @@ public class XmlFileUtils {
       "  路径前缀可以抽出来，重复的长目录只写一遍：先在 trees 里加一个 prefixes 段，",
       "  里面一条 prefix 声明一个 id 和它的完整路径，再让 tree 用 prefix= 指过去。",
       "  这件事不用手写，侧边栏「目录备注」工具栏上的「抽离或还原路径前缀」按钮来回切。",
+      "  抽不抽看净收益：条数 x (前缀长 - id长 - 10) - (前缀长 + id长 + 25) 为正才抽，",
+      "  没有「几条起步」的门槛，长目录 2 条就够本，/src 这种再多条也抽不出来。",
+      "  id 可以手改成看得懂的名字（中文也行），重新抽离时会留着不动。",
       "",
       "  命中优先级：path 全等的最高，其次 path 加 extension（path 更长的赢），",
       "  最后是只写 extension 的全项目规则。同优先级时写在前面的那条赢，所以侧边栏",
@@ -257,7 +276,7 @@ public class XmlFileUtils {
      * 找配置文件：V6 优先，没有就退回老的 V3
      *
      * <p>
-     * 这里只读不改名。改名是 {@link #migrateLegacyFile} 的事，它要开写操作，
+     * 这里只读不改名。改名是 {@link #renameConfigFile} 的事，它要开写操作，
      * 而本方法的调用点里有在写操作和 PSI 事件回调里的，不能在那些地方再嵌一层。
      * </p>
      *
@@ -295,6 +314,16 @@ public class XmlFileUtils {
     }
 
     /**
+     * 当前用的是不是老的 V3 文件名
+     *
+     * @param project 项目
+     * @return 只有在确实读到 V3 时才是 true
+     */
+    public static boolean isOnLegacyName(Project project) {
+        return LEGACY_XML_FILE_NAME.equals(configFileName(project));
+    }
+
+    /**
      * 改名之后发一条通知
      *
      * <p>
@@ -303,52 +332,61 @@ public class XmlFileUtils {
      * </p>
      *
      * @param project 项目
+     * @param from    原文件名
+     * @param to      新文件名
      */
-    public static void notifyMigrated(Project project) {
+    public static void notifyRenamed(Project project, String from, String to) {
         final NotificationGroupManager manager = NotificationGroupManager.getInstance();
         if (!manager.isGroupRegistered(NOTIFICATION_GROUP)) {
             return;
         }
+        final String why = XMLFileName.equals(to)
+                ? "抽离过路径前缀的文件旧版插件读不了（它不认 prefix 属性），换个名字新旧两版就各读各的。"
+                : "文件里已经没有 prefix 了，改回旧名字旧版插件就能重新读到它。";
         manager.getNotificationGroup(NOTIFICATION_GROUP)
                 .createNotification("配置文件已改名",
-                        LEGACY_XML_FILE_NAME + " 已经改名为 " + XMLFileName + "，内容一个字没动。"
-                                + "改名是为了让 6.0.0 的路径前缀写法和旧版插件互不干扰——"
-                                + "旧版找不到新文件，就不会把抽离过的路径读错。",
+                        from + " 已经改名为 " + to + "，内容一个字没动。" + why,
                         NotificationType.INFORMATION)
                 .notify(project);
     }
 
     /**
-     * 把老的 {@code DirectoryV3.xml} 改名成 {@code DirectoryV6.xml}
+     * 把配置文件改成另一个名字
      *
      * <p>
-     * 只在「有 V3、没有 V6」时动手，两个都在就不管——那种情况用户自己清楚在做什么，
-     * 插件不替他决定丢哪份。改的是用户项目里会进版本库的文件，所以改完发一条通知告知。
+     * 两个方向都走这里：抽离保存时 V3 → V6，还原时用户选了「换回 V3」就 V6 → V3。
+     * 目标名字已经存在就不动——那种情况用户自己清楚在做什么，插件不替他决定丢哪份。
      * </p>
      * <p>
-     * 只该从启动活动那种干净的上下文调：它要开写操作，在写操作或 PSI 事件回调里再调会出事。
+     * 它要开写操作，别在写操作或 PSI 事件回调里调。
      * </p>
      *
-     * @param project 项目
+     * @param project    项目
+     * @param targetName 目标文件名，只接受本类认识的那两个
      * @return 真的改名了返回 true
      */
-    public static boolean migrateLegacyFile(Project project) {
+    public static boolean renameConfigFile(Project project, String targetName) {
         if (project == null || project.getBasePath() == null) {
             return false;
         }
-        final LocalFileSystem lfs = LocalFileSystem.getInstance();
-        if (null != lfs.refreshAndFindFileByIoFile(new File(project.getBasePath() + File.separator + XMLFileName))) {
+        if (!XMLFileName.equals(targetName) && !LEGACY_XML_FILE_NAME.equals(targetName)) {
             return false;
         }
-        final VirtualFile legacy = lfs.refreshAndFindFileByIoFile(
-                new File(project.getBasePath() + File.separator + LEGACY_XML_FILE_NAME));
-        if (null == legacy) {
+        final String currentName = XMLFileName.equals(targetName) ? LEGACY_XML_FILE_NAME : XMLFileName;
+        final LocalFileSystem lfs = LocalFileSystem.getInstance();
+        //目标已经在了就不动，免得把用户的另一份覆盖掉
+        if (null != lfs.refreshAndFindFileByIoFile(new File(project.getBasePath() + File.separator + targetName))) {
+            return false;
+        }
+        final VirtualFile current = lfs.refreshAndFindFileByIoFile(
+                new File(project.getBasePath() + File.separator + currentName));
+        if (null == current) {
             return false;
         }
         final boolean[] renamed = new boolean[1];
         WriteCommandAction.runWriteCommandAction(project, () -> {
             try {
-                legacy.rename(XmlFileUtils.class, XMLFileName);
+                current.rename(XmlFileUtils.class, targetName);
                 renamed[0] = true;
             } catch (IOException e) {
                 e.printStackTrace();

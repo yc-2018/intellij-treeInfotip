@@ -91,6 +91,29 @@ public final class PathPrefixes {
      * @return 指派结果，路径顺序和入参一致
      */
     public static Plan plan(List<String> paths) {
+        return plan(paths, java.util.Collections.<String, String>emptyMap());
+    }
+
+    /**
+     * 挑出值得抽离的前缀，并给每条路径指派一个
+     *
+     * <p>
+     * 做法是贪心：候选前缀 = 每条路径的各级祖先目录连它自己，按长度<b>从长到短</b>过一遍，
+     * 够本的就留下、把它覆盖的路径认领走。长的先挑才省得最多，剩下的再交给短前缀。
+     * </p>
+     * <p>
+     * 够本的判据是净收益为正：{@code 条数 × (前缀长 - id长 - 每条的属性开销) - 声明这一行的开销}。
+     * 这个式子自动把 {@code /src} 这种短前缀滤掉——省下的 4 个字符还不够写 {@code prefix="src" }。
+     * 也因此<b>不存在「几条起步」这个门槛</b>：前缀越长越容易够本，64 个字符的前缀 2 条还净亏、
+     * 3 条就净赚。
+     * </p>
+     *
+     * @param paths   全部规则的完整路径，允许含 null 和空串，会被跳过
+     * @param keepIds 文件里已经声明过的「前缀路径 → id」。用户手改过 id 就该留着他改的，
+     *                重新抽离不该把 {@code 承运商基础包} 打回 {@code carrier5}
+     * @return 指派结果，路径顺序和入参一致
+     */
+    public static Plan plan(List<String> paths, Map<String, String> keepIds) {
         final Map<String, Integer> coverage = new HashMap<>();
         for (String path : paths) {
             for (String candidate : candidates(path)) {
@@ -118,7 +141,7 @@ public final class PathPrefixes {
             if (hits.size() < MIN_COVERAGE) {
                 continue;
             }
-            final String id = newId(candidate, chosen.keySet());
+            final String id = newId(candidate, chosen.keySet(), keepIds);
             if (gain(candidate, id, hits.size()) <= 0) {
                 continue;
             }
@@ -177,7 +200,13 @@ public final class PathPrefixes {
      * 重名时加数字。
      * </p>
      */
-    private static String newId(String prefix, java.util.Set<String> used) {
+    private static String newId(String prefix, java.util.Set<String> used, Map<String, String> keepIds) {
+        //文件里已经给这个前缀起过名了就用回去。用户把 carrier5 手改成「承运商基础包」是有意为之，
+        //重新抽离时把它打回自动生成的名字等于白改
+        final String kept = keepIds.get(prefix);
+        if (null != kept && !kept.trim().isEmpty() && !used.contains(kept.trim())) {
+            return kept.trim();
+        }
         final int lastSlash = prefix.lastIndexOf('/');
         String last = prefix.substring(lastSlash + 1);
         if (lastSlash > 0) {

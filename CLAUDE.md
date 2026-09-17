@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 TreeInfoTip Notes 是一个 IntelliJ 平台插件，给项目目录树的节点加备注、颜色、图标、悬浮提示、删除线和自定义显示名。所有配置都存在**项目根目录的 `DirectoryV6.xml`** 里，不用 IDE 的持久化设置。
 
-文件名 6.0.0 之前叫 `DirectoryV3.xml`，只有 V3 没有 V6 时由 `XmlFileUtils.migrateLegacyFile` 在启动活动里**改名**过来（内容不动），改完发一条通知——动的是会进版本库的文件，不能一声不响。`findConfigFile` 读取时 V6 优先、退回 V3，所以还没迁移的项目照样能用。改名的原因见「路径前缀」一节。
+文件名 6.0.0 之前叫 `DirectoryV3.xml`。**改名不在启动时做**——没抽离过的文件旧版读得好好的，开个 IDE 就把用户项目里一个会进版本库的文件改名太唐突。改名只在用户点了「抽离」并**保存**时才由 `XmlFileUtils.renameConfigFile` 做（还原时选「换回旧名字」则是反方向），改完发一条通知。`findConfigFile` 读取时 V6 优先、退回 V3，所以两个名字都认，没抽离过的项目一直叫 V3 也没问题。改名的原因和「文件名跟着内容走」这条不变量见「路径前缀」一节。
 
 ## 构建命令
 
@@ -89,7 +89,6 @@ JAVA_HOME="D:/green/jdks/jdk-17.0.8" /d/green/Gradle/dists/gradle-7.6.4/bin/grad
 ```
 DirectoryV6.xml（项目根目录）
    ↓ PluginStartupActivity.runActivity（postStartupActivity）
-   ↓ XmlFileUtils.migrateLegacyFile（只在有 V3、没有 V6 时改名）
    ↓ XmlFileUtils.loadXmlFile → XmlStorage.parsing（这一步把 prefix 展开成完整路径）
 XmlStorage.XML_STORAGE_LIST：每个 Project 一份 List<XmlEntity> 内存缓存
    ↓ TreesUtils.getMatchPath(virtualFile, project)
@@ -160,7 +159,16 @@ PresentationData：图标 / locationString / tooltip / presentableText / 文字�
 - 写回时 `XmlStorage.setPathAttribute` 会按标签上的 `prefix` 减掉前缀再写。**内存里是完整路径，直接写回带 `prefix` 的标签会变成「前缀 + 完整路径」**；减不掉时（用户手改了 path、或者 id 拼错）就摘掉 `prefix` 属性、写完整路径，宁可这条不省字符也不能写出错路径。
 - `XmlStorage.remove` 的路径比对也要用展开后的完整路径，否则抽离过的文件里规则删不掉。
 
-入口是侧边栏「目录备注」工具栏上的「抽离或还原路径前缀」，开 `XmlPrefixDialog`。抽离和还原**只改弹窗里的文本、不落盘**，所以「还原」和「关掉不保存」是两道后悔门；点「抽离」时先弹一次确认（默认焦点给「取消」），已经抽过了再点就不重复警告、直接按当前配置重算。
+入口是侧边栏「目录备注」工具栏上的「抽离或还原路径前缀」，开 `XmlPrefixDialog`，四个按钮：抽离 | 还原 | 清理前缀 | 保存。前三个**只改弹窗里的文本、不落盘**，所以「还原」和「关掉不保存」是两道后悔门。
+
+- **文件名跟着内容走，改名一律推迟到 `doSave`**（6.1.0 起）。抽离时不改名、还原时也不改名，只在保存那一刻按刚写进去的内容决定：内容抽离过而文件还叫 V3 就改成 V6；内容没抽离过且用户在「还原」时选了换回去（`renameToLegacyOnSave` 标记）就改成 V3。**顺序是先写内容再改名**——反过来的话写文件那步拿到的还是老的 `VirtualFile`，中途失败会留下一个名字对内容不对的文件。这条不变量的好处是：只要文件叫 V6，里面就确实抽离过、旧版读不了；中途反悔了文件名也没被动过。
+- **「抽离」的确认只在真要改名时弹**（默认焦点给「取消」）。判据就是 `XmlFileUtils.isOnLegacyName(project)`：本来就叫 V6 的、或者已经抽过再点一次的（按当前配置重算）都没有兼容性变化，再弹一次只是噪音。
+- **「还原」是三选项**：换回 V3 / 保留 V6 / 取消（默认焦点给「取消」，`Messages.showDialog` 关窗返回 -1 要一并当取消处理）。只用本插件的人换回去反而多一次改名，所以不替他决定。文件本来就叫 V3 时不问，没有可换的。
+- **手改过的 prefix id 要留着**。`PathPrefixes.plan(paths, keepIds)` 的 `keepIds` 是「前缀路径 → id」，由 `PathPrefixEditor.extract` 在 **`flatten` 之前**从 `readPrefixes` 反转得到——`flatten` 会把 `<prefixes>` 整段删掉，之后再读就什么都没有了。用户把 `carrier5` 改成 `承运商基础包` 是有意为之，重新抽离打回自动名等于白改。
+- **前缀体检和清理**：`PathPrefixEditor.diagnose` 给每条声明返回一个 `PrefixIssue`（id、路径、**在文本里的起止偏移量**、被引用次数、路径是否失效），弹窗拿偏移量直接喂 `Highlighter.addHighlight`，红色是失效、黄色是没人引用。失效的前缀在别处看不出来——「目录备注」列表标红的是规则，而一条前缀失效意味着底下一批规则**一起**失效，光看列表不知道根因在前缀上。`cleanPrefixes` 里**失效的要连引用它的规则一起删**，只删声明会让那些规则剩下半截相对路径、变成指向别处的错规则，比留着失效的更糟；没人引用的只删声明。
+- **偏移量能直接用的前提是行分隔符已经归一**。`loadFromDisk` 要 `StringUtil.convertLineSeparators`：文本框里是 `\r\n`、`diagnose` 解析出来的偏移量按 `\n` 数，高亮会整体错位（`XML_TEMPLATE` 写盘用的就是 `\r\n`）。`doSave` 本来也要转，提前转等于对齐。
+
+**「为什么这两条没抽出来」是高频疑问**，判据在 `PathPrefixes.gain`：`条数 × (前缀长 - id长 - 10) - (前缀长 + id长 + 25)`，**没有「几条起步」的门槛**。实测 `.../datax/executor/controller`（62 字符）下面 2 条规则净收益是 -16、抽不出来，而 72 字符的前缀 2 条就够本。这个解释在三处都要有：`HelpView.prefixes()`、`XmlFileUtils.XML_TEMPLATE` 的注释、以及 `plan` 的 javadoc。
 
 ### 侧边栏工具窗口（5.6.0 起三个 tab）
 
@@ -240,7 +248,7 @@ action id 不对用户显示（菜单文字来自 `text=` 属性），改名只�
 
 两个插件同时装着时的实际情况，别搞反：
 
-- **6.0.0 起两边连配置文件都不共用了**：本插件读 `DirectoryV6.xml`，旧版只认 `DirectoryV3.xml`（而且启动时 V3 已经被改名走了）。所以旧版看不到新加的备注，反过来也一样——这正是改名要的效果，抽离过路径前缀的文件交给旧版读只会读出一堆错路径。6.0.0 之前两边读同一个文件，那时**不是**冲突点，反而是迁移免费的原因。
+- **6.0.0 起两边可能连配置文件都不共用**：抽离过的项目里本插件读 `DirectoryV6.xml`，旧版只认 `DirectoryV3.xml`。所以旧版看不到新加的备注，反过来也一样——这正是改名要的效果，抽离过路径前缀的文件交给旧版读只会读出一堆错路径。**没抽离过的项目文件还叫 V3，两边照样共用**，和 6.0.0 之前一样。
 - 真正的代价是每次重绘算两遍，而且两个装饰入口的执行顺序不定，**旧版跑在后面时会 `clearText()` 掉新版才有的覆盖显示名称等设置**。
 - 检测到冲突时**不要**顺手跳过自己的装饰：跳过等于把渲染完全交给旧版，用户必然看不到新特性；两边都跑最坏也就是退化成旧版的效果，是弱优于跳过的。
 - 也没有用 `<incompatible-with>`（2022.3 确实支持，`XmlReader` 解析进 `RawPluginDescriptor.incompatibilities`，`PluginSetBuilder` 执行）。它直接让插件不加载，太硬；而且它和 `com.intellij.pluginReplacement` 互斥——插件都不加载了，自然也注册不了那个 EP。
