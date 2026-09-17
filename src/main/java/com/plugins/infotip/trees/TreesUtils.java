@@ -141,7 +141,7 @@ public class TreesUtils {
      * 按项目内的相对路径找 VirtualFile
      *
      * @param project 项目
-     * @param path    {@code DirectoryV3.xml} 里记的相对路径，形如 {@code /src/main/java}
+     * @param path    {@code DirectoryV6.xml} 里记的相对路径，形如 {@code /src/main/java}
      * @return 路径为空、或指向的文件已经不存在时返回 null
      */
     public static VirtualFile findProjectFile(Project project, String path) {

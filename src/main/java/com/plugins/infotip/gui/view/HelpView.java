@@ -26,7 +26,7 @@ import javax.swing.ScrollPaneConstants;
 /**
  * A <code>HelpView</code> Class
  * <p>
- * 「说明」tab：一页 HTML，讲清楚菜单怎么用、{@code DirectoryV3.xml} 有哪些参数、命中优先级怎么算。
+ * 「说明」tab：一页 HTML，讲清楚菜单怎么用、{@code DirectoryV6.xml} 有哪些参数、命中优先级怎么算。
  * </p>
  * <p>
  * 做成 tab 而不是弹窗：参数表要对着配置文件看，弹窗一关就没了，而侧边栏可以一直开着。
@@ -101,7 +101,7 @@ public class HelpView extends JEditorPane {
     }
 
     /**
-     * 工具栏上的「打开 DirectoryV3.xml」，省得用户自己去项目根目录里翻
+     * 工具栏上的「打开 DirectoryV6.xml」，省得用户自己去项目根目录里翻
      * <p>
      * 文件不存在时只提示，<b>不顺手建一个</b>：空配置文件对用户没用，而右键菜单加第一条备注时
      * 会自动建（{@link XmlFileUtils#createXmlFile}），带着参数说明的注释也是那时写进去的。
@@ -110,14 +110,14 @@ public class HelpView extends JEditorPane {
     private class OpenXmlAction extends AnAction {
 
         OpenXmlAction() {
-            super("打开 DirectoryV3.xml", "打开项目根目录下的配置文件", AllIcons.FileTypes.Xml);
+            super("打开 DirectoryV6.xml", "打开项目根目录下的配置文件", AllIcons.FileTypes.Xml);
         }
 
         @Override
         public void actionPerformed(@NotNull AnActionEvent e) {
             final XmlFile xmlFile = XmlFileUtils.getXmlFile(project);
             if (null == xmlFile) {
-                Messages.showInfoMessage(project, "这个项目还没有 DirectoryV3.xml。\n"
+                Messages.showInfoMessage(project, "这个项目还没有 DirectoryV6.xml。\n"
                         + "在项目树上右键任意文件或目录 → 目录备注 → 添加文字备注，加第一条备注时会自动建出来。", "打开配置文件");
                 return;
             }
@@ -156,7 +156,7 @@ public class HelpView extends JEditorPane {
     private static String intro() {
         return "<h3>TreeInfoTip Notes</h3>"
                 + "<p>给项目树上的文件和目录加备注、颜色、图标、悬浮提示、删除线，也能改掉节点显示的名字。"
-                + "配置全部存在<b>项目根目录的 DirectoryV3.xml</b> 里，跟着项目走，"
+                + "配置全部存在<b>项目根目录的 DirectoryV6.xml</b> 里，跟着项目走，"
                 + "提交进版本库整个团队就能共用。</p>";
     }
 
@@ -188,14 +188,15 @@ public class HelpView extends JEditorPane {
                 + "<b>单击</b>跳到定义处，<b>双击</b>收缩或展开。上面的「方法」「属性」勾选框控制显示哪一类，"
                 + "「层数」拉杆控制展开几层，最多 10 层。注释按四级找：文档注释、多行注释、"
                 + "行尾的单行注释、紧贴在上方的单行注释，命中一级就不再往下找。</li>"
-                + "<li><b>目录备注</b>：DirectoryV3.xml 里的规则一行一条。<b>双击</b>跳到对应的文件；"
+                + "<li><b>目录备注</b>：DirectoryV6.xml 里的规则一行一条。<b>双击</b>跳到对应的文件；"
                 + "路径已经不存在的<b>标红排在最前面</b>，双击跳到 XML 里那条规则所在的行；"
                 + "被前面同路径规则盖住、永远不生效的<b>标灰</b>。"
                 + "右键有<b>置顶</b>和<b>删除</b>，都支持 Ctrl 多选；工具栏上还有「刷新」"
-                + "「清除失效路径」和「清理重复规则」。</li>"
+                + "「清除失效路径」「清理重复规则」和「抽离或还原路径前缀」。</li>"
                 + "<li><b>说明</b>：就是这一页。</li>"
                 + "</ul>"
-                + "<p>另外底部还有一个「TreeInfoTip Notes XML」窗口，直接编辑配置文件本身。</p>";
+                + "<p>「抽离或还原路径前缀」会开一个弹窗，直接显示配置文件正文，也能在那里改完保存。"
+                + "重复的长目录可以提到 <tt>prefixes</tt> 里、每条规则只留剩下那截，不想要了点「还原」换回来。</p>";
     }
 
     /**
@@ -203,7 +204,7 @@ public class HelpView extends JEditorPane {
      * 新增可配置属性时这里也要补一条
      */
     private static String attributes() {
-        return "<h4>DirectoryV3.xml 的参数</h4>"
+        return "<h4>DirectoryV6.xml 的参数</h4>"
                 + "<p>一条 &lt;tree&gt; 就是一条规则，参数<b>全是可选的</b>，按需要写几个：</p>"
                 + "<ul>"
                 + "<li><tt>path</tt> — 相对项目根目录的路径，以 / 开头，例如 <tt>/src/main/java</tt>；"
@@ -218,6 +219,9 @@ public class HelpView extends JEditorPane {
                 + "<li><tt>textColor</tt> — 文字颜色，十进制 <tt>r,g,b</tt>，例如 <tt>255,0,0</tt>。</li>"
                 + "<li><tt>backgroundColor</tt> — 背景色，写法同上。</li>"
                 + "<li><tt>strikethrough</tt> — 填 <tt>true</tt> 给节点加删除线。</li>"
+                + "<li><tt>prefix</tt> — 引用 <tt>prefixes</tt> 里声明的某个 id，"
+                + "<tt>path</tt> 只写剩下那截。这个不用手写，用工具栏的"
+                + "「抽离或还原路径前缀」来回切就行。</li>"
                 + "</ul>";
     }
 

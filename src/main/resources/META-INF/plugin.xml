@@ -19,7 +19,7 @@
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>5.7.5</version>
+    <version>6.0.0</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -40,8 +40,8 @@
             <li>"File members" tab: the methods and properties of the file you are editing as a tree, each followed by its comment (JavaDoc / JSDoc / line comments) — any language with a structure view works: Java, Kotlin, TS / JS / TSX, Python, Go, and more</li>
             <li>"Directory notes" tab: every configured rule in one list — dead paths flagged red, never-matching duplicates greyed out, one-click cleanup for both, double-click to jump to the file or to the rule's line in the XML</li>
             <li>"Help" tab: what each context-menu item does, all XML attributes, and how match priority is resolved</li>
-            <li>XML editor tool window to view and edit the configuration without digging into the project root</li>
-            <li>Everything lives in one <b>DirectoryV3.xml</b> in the project root: commit it to share with your team, delete it to reset, hand edits apply on save</li>
+            <li>Extract repeated path prefixes into a <tt>prefixes</tt> table so long directories are written once, restorable at any time</li>
+            <li>Everything lives in one <b>DirectoryV6.xml</b> in the project root: commit it to share with your team, delete it to reset, hand edits apply on save</li>
           </ul>
       </p>
       <p>
@@ -52,8 +52,8 @@
             <li>「文件成员」tab：把当前文件的方法和属性列成一棵树，每项后面跟它的注释（JavaDoc / JSDoc / 行注释）——凡是有结构视图的语言都支持：Java、Kotlin、TS / JS / TSX、Python、Go 等</li>
             <li>「目录备注」tab：全部规则集中在一个列表——失效路径标红、永不生效的重复规则标灰、一键清理，双击跳到对应文件或 XML 里那条规则所在的行</li>
             <li>「说明」tab：右键菜单每一项做什么、XML 全部参数怎么写、命中优先级怎么算</li>
-            <li>XML 编辑工具窗口：不用去项目根目录里翻，直接查看和编辑配置文件</li>
-            <li>全部配置存在项目根目录的一个 <b>DirectoryV3.xml</b> 里：提交它就能同步给同事。删掉它就全部重置，手动改完保存即时生效</li>
+            <li>抽离路径前缀：重复的长目录提到 <tt>prefixes</tt> 里只写一遍，每条规则只留剩下那截，随时能还原回去</li>
+            <li>全部配置存在项目根目录的一个 <b>DirectoryV6.xml</b> 里：提交它就能同步给同事。删掉它就全部重置，手动改完保存即时生效</li>
           </ul>
       </p>
       <br/>
@@ -83,6 +83,30 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+      <ul>
+        <p>6.0.0</p>
+        <li>配置文件改名为 <b>DirectoryV6.xml</b>，老的 DirectoryV3.xml 在 IDE 启动时自动改名过来，内容一个字不动，并发一条通知告知
+        </li>
+        <li>新增<b>抽离路径前缀</b>：重复的长目录提到 &lt;prefixes&gt; 里只写一遍，每条规则只留剩下那截。真实数据实测 19
+          条规则的路径部分从 1012 个字符降到 830 个
+        </li>
+        <li>入口在侧边栏「目录备注」工具栏的「抽离或还原路径前缀」，点开是一个弹窗，直接显示配置文件正文；顶上三个按钮：抽离、还原、保存。抽离和还原只改弹窗里的内容，看清楚了再保存，不满意点「还原」或者直接关掉
+        </li>
+        <li>去掉底部的「TreeInfoTip Notes XML」工具窗口：常驻占一栏、又只是偶尔用一次，内容收进了上面那个弹窗。「检查失效路径」由「目录备注」列表自带的标红代替，正则实现的「格式化」和「清理空属性」一并去掉（属性值里带
+          &lt; &gt; 时它们本来就不安全）
+        </li>
+        <li>改名的原因：抽离过的文件旧版插件读不了——它不认 prefix 属性，会把剩下那截当成完整路径。换个文件名，新旧两版就各读各的，不会互相读坏
+        </li>
+        <li>Renamed the config file to <b>DirectoryV6.xml</b>; an existing DirectoryV3.xml is renamed automatically on
+          startup, contents untouched
+        </li>
+        <li>New: extract repeated path prefixes into a &lt;prefixes&gt; table, so a long shared directory is written once
+        </li>
+        <li>New entry point in the "Directory notes" toolbar opens a dialog showing the config file, with Extract /
+          Restore / Save. Extract and Restore only change the dialog text — nothing is written until you hit Save
+        </li>
+        <li>Removed the bottom "TreeInfoTip Notes XML" tool window; its content moved into that dialog</li>
+      </ul>
       <ul>
         <p>5.7.5</p>
         <li>修复「TreeInfoTip Notes XML」窗口点「保存」在新版 IDE 上报 Read access is allowed from inside read-action
@@ -281,8 +305,6 @@
              不用也不能在这里声明第二个路径 -->
         <toolWindow id="TreeInfoTip Notes" secondary="true" icon="/icons/treeNote.svg" anchor="right"
                     factoryClass="com.plugins.infotip.gui.view.NotesToolWindowFactory"/>
-        <toolWindow id="TreeInfoTip Notes XML" secondary="true" icon="AllIcons.FileTypes.Xml" anchor="bottom"
-                    factoryClass="com.plugins.infotip.gui.view.XmlEditorToolWindow"/>
         <notificationGroup id="TreeInfoTip Notes" displayType="STICKY_BALLOON"/>
         <postStartupActivity implementation="com.plugins.infotip.PluginStartupActivity"/>
         <treeStructureProvider implementation="com.plugins.infotip.TreeOnlyTextProvider"/>

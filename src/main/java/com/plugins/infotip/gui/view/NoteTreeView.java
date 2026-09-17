@@ -49,7 +49,7 @@ import java.util.Set;
 /**
  * A <code>NoteTreeView</code> Class
  * <p>
- * 「目录备注」列表：{@code DirectoryV3.xml} 里配的规则平铺一行一条。
+ * 「目录备注」列表：{@code DirectoryV6.xml} 里配的规则平铺一行一条。
  * </p>
  * <p>
  * 是平铺而不是真实的目录树——规则是稀疏的，一条 {@code /src/main/java/a/b/C.java} 在树里要
@@ -132,10 +132,32 @@ public class NoteTreeView extends Tree {
         group.add(new RefreshAction());
         group.add(new ClearMissingAction());
         group.add(new ClearShadowedAction());
+        group.add(new PathPrefixAction());
         final ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar(PLACE_TOOLBAR, group, true);
         //不设 targetComponent 平台会警告，action 的 update 也拿不到正确的 DataContext
         toolbar.setTargetComponent(this);
         return toolbar.getComponent();
+    }
+
+    /**
+     * 工具栏上的「抽离或还原路径前缀」，开 {@link XmlPrefixDialog}
+     *
+     * <p>
+     * 6.0.0 之前这块内容在一个独立的「TreeInfoTip Notes XML」底部工具窗口里，
+     * 常驻占一栏、又只是偶尔用一次，所以收进弹窗，入口挪到这里。
+     * </p>
+     */
+    private class PathPrefixAction extends AnAction {
+
+        PathPrefixAction() {
+            super("抽离或还原路径前缀", "查看配置文件，把重复的长目录抽成前缀，或者还原回去",
+                    AllIcons.Actions.Collapseall);
+        }
+
+        @Override
+        public void actionPerformed(@NotNull AnActionEvent e) {
+            new XmlPrefixDialog(project).show();
+        }
     }
 
     /**
@@ -329,7 +351,7 @@ public class NoteTreeView extends Tree {
     }
 
     /**
-     * 双击一条备注：能落到真实文件就跳文件，否则跳到 {@code DirectoryV3.xml} 里这条规则所在的行
+     * 双击一条备注：能落到真实文件就跳文件，否则跳到 {@code DirectoryV6.xml} 里这条规则所在的行
      * <p>
      * 跳 XML 覆盖三种双击没反应的情况：路径已经被删或改名的（列表里标红那些）、
      * 被前面同键规则覆盖而不生效的（列表里标灰加删除线那些），
@@ -359,7 +381,7 @@ public class NoteTreeView extends Tree {
     }
 
     /**
-     * 打开 {@code DirectoryV3.xml} 并把光标放到这条 {@code <tree>} 标签上
+     * 打开 {@code DirectoryV6.xml} 并把光标放到这条 {@code <tree>} 标签上
      * <p>
      * 偏移量来自解析时存在 {@link XmlEntity} 上的 {@link XmlTag}，所以行号一定对得上，
      * 不用自己去文本里找。标签失效（文件被外部改过、还没重新解析完）时退到文件开头。
@@ -488,7 +510,7 @@ public class NoteTreeView extends Tree {
     }
 
     /**
-     * 删除是不可逆的（改的是用户项目里的 {@code DirectoryV3.xml}），所以两个删除动作都要先问一句
+     * 删除是不可逆的（改的是用户项目里的 {@code DirectoryV6.xml}），所以两个删除动作都要先问一句
      *
      * @return 用户点了「确定」才是 {@code true}
      */
@@ -569,7 +591,7 @@ public class NoteTreeView extends Tree {
      * 真正在生效的那条第一名一定留着，所以清理前后项目树的显示<b>完全不变</b>。
      * </p>
      * <p>
-     * 之所以要用户按一下、不在解析时自动去重：{@code DirectoryV3.xml} 躺在用户项目根目录里，
+     * 之所以要用户按一下、不在解析时自动去重：{@code DirectoryV6.xml} 躺在用户项目根目录里，
      * 是可以手改也会进版本库的文件，插件不该背着人重写它。
      * </p>
      */
@@ -601,7 +623,7 @@ public class NoteTreeView extends Tree {
     private class DeleteAction extends AnAction {
 
         DeleteAction() {
-            super("删除", "从 DirectoryV3.xml 里删掉选中的规则", AllIcons.General.Remove);
+            super("删除", "从 DirectoryV6.xml 里删掉选中的规则", AllIcons.General.Remove);
         }
 
         @Override
@@ -621,7 +643,7 @@ public class NoteTreeView extends Tree {
     }
 
     /**
-     * 右键菜单里的「置顶」，把选中的 {@code <tree>} 挪到 {@code DirectoryV3.xml} 的最前面
+     * 右键菜单里的「置顶」，把选中的 {@code <tree>} 挪到 {@code DirectoryV6.xml} 的最前面
      * <p>
      * 标签在文件里的先后是有意义的：同优先级的多条规则命中同一个节点时，
      * {@code TreesUtils.getMatchPath} 让先遇到的那条赢。所以「置顶」不是单纯的列表排序，

@@ -1,7 +1,10 @@
 package com.plugins.infotip.storage;
 
+import com.intellij.notification.NotificationGroupManager;
+import com.intellij.notification.NotificationType;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.fileTypes.LanguageFileType;
 import com.intellij.openapi.project.Project;
@@ -32,7 +35,26 @@ import static com.intellij.openapi.actionSystem.CommonDataKeys.VIRTUAL_FILE_ARRA
  * <p><b>date: 2023/4/13 12:39</b></p>
  */
 public class XmlFileUtils {
-    private static final String XMLFileName = "DirectoryV3.xml";
+    /**
+     * 现在用的配置文件名。
+     *
+     * <p>
+     * 5.x 一直叫 {@code DirectoryV3.xml}，6.0.0 跟着大版本号改成 V6：抽离过路径前缀的文件旧版插件读不了
+     * （它不认 {@code prefix} 属性，会把相对部分当成完整路径），换个名字就让新旧两版各找各的文件，
+     * 不会互相读坏。老文件由 {@link #migrateLegacyFile} 在启动时改名过来。
+     * </p>
+     */
+    private static final String XMLFileName = "DirectoryV6.xml";
+
+    /**
+     * 5.x 及之前的文件名，只在还没有 V6 时读它，读到就改名
+     */
+    private static final String LEGACY_XML_FILE_NAME = "DirectoryV3.xml";
+
+    /**
+     * 通知分组 id，必须和 {@code plugin.xml} 里注册的那个一致
+     */
+    private static final String NOTIFICATION_GROUP = "TreeInfoTip Notes";
 
     private final static ConcurrentHashMap<Project, XmlFile> XML_STORAGE_File = new ConcurrentHashMap<Project, XmlFile>();
 
@@ -152,16 +174,15 @@ public class XmlFileUtils {
     }
 
     /**
-     * 新项目第一次配置时写出去的 {@code DirectoryV3.xml} 模板
+     * 新项目第一次配置时写出去的 {@code DirectoryV6.xml} 模板
      * <p>
      * {@code <trees>} 下面那段注释是给手改文件的人看的。这个文件躺在项目根目录，用户迟早会点开它，
      * 而 {@code presentableText}、{@code tooltipTitle} 这些参数名单看名字猜不全，更猜不出命中优先级。
      * </p>
      * <p>
-     * 注释里有三样东西不能出现，都会被「TreeInfoTip Notes XML」窗口的「格式化」误伤：{@code <trees>} 和
-     * {@code </trees>}（会被塞进换行）、带空格的 {@code <tree }（会被缩进四格）、以及行尾的
-     * {@code >} 紧接下一行开头的 {@code <}（{@code >\s*<} 会被压成一个换行）。另外 XML 注释本身
-     * 不允许出现连续两个减号。
+     * 6.0.0 之前这段注释还要避开「格式化」按钮的正则（{@code <trees>}、带空格的 {@code <tree }、
+     * 行尾 {@code >} 接行首 {@code <}），那个按钮已经随 XML 工具窗口一起去掉了，约束不再适用。
+     * XML 注释本身不允许出现连续两个减号，这条仍然有效。
      * </p>
      */
     private static final String XML_TEMPLATE = String.join("\r\n",
@@ -183,6 +204,11 @@ public class XmlFileUtils {
       "    textColor        文字颜色，十进制 r,g,b，例如 255,0,0",
       "    backgroundColor  背景色，写法同上",
       "    strikethrough    填 true 给节点加删除线",
+      "    prefix           引用下面 prefixes 里声明的某个 id，path 只写剩下的那截",
+      "",
+      "  路径前缀可以抽出来，重复的长目录只写一遍：先在 trees 里加一个 prefixes 段，",
+      "  里面一条 prefix 声明一个 id 和它的完整路径，再让 tree 用 prefix= 指过去。",
+      "  这件事不用手写，侧边栏「目录备注」工具栏上的「抽离或还原路径前缀」按钮来回切。",
       "",
       "  命中优先级：path 全等的最高，其次 path 加 extension（path 更长的赢），",
       "  最后是只写 extension 的全项目规则。同优先级时写在前面的那条赢，所以侧边栏",
@@ -202,7 +228,8 @@ public class XmlFileUtils {
         }
         LanguageFileType xml = (LanguageFileType) FileTypeManager.getInstance().getStdFileType("XML");
         PsiFile pf = PsiFileFactory.getInstance(project).createFileFromText(XMLFileName, xml, XML_TEMPLATE);
-        return loadSaveFileXml(project, pf.getText());
+        //新建一律用 V6，老名字只在迁移时出现
+        return loadSaveFileXml(project, pf.getText(), XMLFileName);
     }
 
     /**
@@ -215,17 +242,119 @@ public class XmlFileUtils {
         if (project == null) {
             return null;
         }
-        File f = new File(project.getBasePath() + File.separator + XMLFileName);
-        VirtualFile virtualFile = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(f);
+        final VirtualFile virtualFile = findConfigFile(project);
         if (null == virtualFile) {
             return null;
         }
-        //virtualFile.refresh(false, true);
         final XmlFile xmlFile = findXmlPsi(project, virtualFile);
         if (null != xmlFile) {
             XML_STORAGE_File.put(project, xmlFile);
         }
         return xmlFile;
+    }
+
+    /**
+     * 找配置文件：V6 优先，没有就退回老的 V3
+     *
+     * <p>
+     * 这里只读不改名。改名是 {@link #migrateLegacyFile} 的事，它要开写操作，
+     * 而本方法的调用点里有在写操作和 PSI 事件回调里的，不能在那些地方再嵌一层。
+     * </p>
+     *
+     * @param project 项目
+     * @return 找不到返回 null
+     */
+    public static VirtualFile findConfigFile(Project project) {
+        if (project == null || project.getBasePath() == null) {
+            return null;
+        }
+        final LocalFileSystem lfs = LocalFileSystem.getInstance();
+        final VirtualFile current = lfs.refreshAndFindFileByIoFile(
+                new File(project.getBasePath() + File.separator + XMLFileName));
+        if (null != current) {
+            return current;
+        }
+        return lfs.refreshAndFindFileByIoFile(
+                new File(project.getBasePath() + File.separator + LEGACY_XML_FILE_NAME));
+    }
+
+    /**
+     * 这个项目当前在用哪个配置文件名
+     *
+     * <p>
+     * 给界面文案用。已经迁移过或者是新项目就是 V6，还没迁移的老项目还是 V3，
+     * 说明文字要跟着变，不然用户按提示去找文件会找不到。
+     * </p>
+     *
+     * @param project 项目
+     * @return 文件名，一个都没有时给 V6
+     */
+    public static String configFileName(Project project) {
+        final VirtualFile file = findConfigFile(project);
+        return null == file ? XMLFileName : file.getName();
+    }
+
+    /**
+     * 改名之后发一条通知
+     *
+     * <p>
+     * 动的是用户项目里会进版本库的文件，不能一声不响：他下次提交会看到一个删除加一个新增，
+     * 得知道是插件干的、为什么干的。
+     * </p>
+     *
+     * @param project 项目
+     */
+    public static void notifyMigrated(Project project) {
+        final NotificationGroupManager manager = NotificationGroupManager.getInstance();
+        if (!manager.isGroupRegistered(NOTIFICATION_GROUP)) {
+            return;
+        }
+        manager.getNotificationGroup(NOTIFICATION_GROUP)
+                .createNotification("配置文件已改名",
+                        LEGACY_XML_FILE_NAME + " 已经改名为 " + XMLFileName + "，内容一个字没动。"
+                                + "改名是为了让 6.0.0 的路径前缀写法和旧版插件互不干扰——"
+                                + "旧版找不到新文件，就不会把抽离过的路径读错。",
+                        NotificationType.INFORMATION)
+                .notify(project);
+    }
+
+    /**
+     * 把老的 {@code DirectoryV3.xml} 改名成 {@code DirectoryV6.xml}
+     *
+     * <p>
+     * 只在「有 V3、没有 V6」时动手，两个都在就不管——那种情况用户自己清楚在做什么，
+     * 插件不替他决定丢哪份。改的是用户项目里会进版本库的文件，所以改完发一条通知告知。
+     * </p>
+     * <p>
+     * 只该从启动活动那种干净的上下文调：它要开写操作，在写操作或 PSI 事件回调里再调会出事。
+     * </p>
+     *
+     * @param project 项目
+     * @return 真的改名了返回 true
+     */
+    public static boolean migrateLegacyFile(Project project) {
+        if (project == null || project.getBasePath() == null) {
+            return false;
+        }
+        final LocalFileSystem lfs = LocalFileSystem.getInstance();
+        if (null != lfs.refreshAndFindFileByIoFile(new File(project.getBasePath() + File.separator + XMLFileName))) {
+            return false;
+        }
+        final VirtualFile legacy = lfs.refreshAndFindFileByIoFile(
+                new File(project.getBasePath() + File.separator + LEGACY_XML_FILE_NAME));
+        if (null == legacy) {
+            return false;
+        }
+        final boolean[] renamed = new boolean[1];
+        WriteCommandAction.runWriteCommandAction(project, () -> {
+            try {
+                legacy.rename(XmlFileUtils.class, XMLFileName);
+                renamed[0] = true;
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        });
+        return renamed[0];
     }
 
     /**
@@ -265,12 +394,22 @@ public class XmlFileUtils {
     /**
      * 获取文件
      *
+     * <p>
+     * 落盘用的是缓存里那个 PsiFile 自己的文件名，<b>不能</b>硬写 V6：项目还没迁移过来时
+     * 缓存里是 V3，硬写会凭空造出第二份配置，两边内容从此各走各的。
+     * </p>
+     *
      * @param project 项目
      * @return XmlFile
      */
     public static XmlFile saveFileXml(Project project) {
         final XmlFile xmlFile = XML_STORAGE_File.get(project);
-        return loadSaveFileXml(project, xmlFile.getText());
+        if (null == xmlFile) {
+            return null;
+        }
+        final VirtualFile virtualFile = xmlFile.getVirtualFile();
+        final String fileName = null == virtualFile ? XMLFileName : virtualFile.getName();
+        return loadSaveFileXml(project, xmlFile.getText(), fileName);
     }
 
     /**
@@ -284,7 +423,7 @@ public class XmlFileUtils {
         if (null != file) {
             final VirtualFile virtualFile = file.getVirtualFile();
             if (null != virtualFile) {
-                return virtualFile.getName().contains(XMLFileName);
+                return isFileName(virtualFile.getName());
             }
         }
         return false;
@@ -293,21 +432,25 @@ public class XmlFileUtils {
     /**
      * 是否为指定的文件
      *
+     * <p>老的 V3 也要认：还没迁移过来的项目读的就是它，改动同样要触发重新解析。</p>
+     *
      * @param name 名称
      * @return boolean
      */
     public static boolean isFileName(String name) {
-        return XMLFileName.equals(name);
+        return XMLFileName.equals(name) || LEGACY_XML_FILE_NAME.equals(name);
     }
 
 
     /**
      * 保存文件
      *
-     * @param project 项目
+     * @param project  项目
+     * @param text     文件不存在时写进去的内容
+     * @param fileName 要落盘的文件名，见 {@link #saveFileXml} 和 {@link #createXmlFile} 的区别
      */
-    private static synchronized XmlFile loadSaveFileXml(Project project, String text) {
-        File f = new File(project.getBasePath() + File.separator + XMLFileName);
+    private static synchronized XmlFile loadSaveFileXml(Project project, String text, String fileName) {
+        File f = new File(project.getBasePath() + File.separator + fileName);
         if (!f.exists()) {
             try {
                 boolean newFile = f.createNewFile();
