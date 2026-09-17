@@ -356,3 +356,4 @@ Marketplace 的插件名始终从 `plugin.xml` 读，网页后台改不了，所
   - `build.gradle` 的 `runIde` 里那个授权 javaagent 路径是 `/Applications/jetbra/fineagent.jar`，**只在作者的 macOS 上存在**，Windows 上就是这个现象。
   - 判断标记：日志里只有 background 类的启动活动（`IsUpToDateCheckStartupActivity`、`CodeWithMeCleanup` 这些在 +5s 出现），却没有任何 smart-mode 活动。要确认就用 `EnumWindows` 列一下那个 JVM 的可见窗口，会看到 `Licenses`。
   - 绕过办法：把要验的逻辑临时从别的入口调一次。`ProjectViewNodeDecorator.decorate` 不受 modality 和 dumb mode 限制，是现成的替代入口（验完记得撤掉）。
+  - **但这条退路 2026-09-17 起也不通了**：本机的许可代理 `jetbrains.zoyopo.com` 已经返回 `Not Found`，`ServerLicenseSource` 一直重试、Licenses 窗口一直开着，沙箱**连项目都打不开**（日志里 `BuildManager` 会说那个项目 "was not opened"），项目视图不渲染，装饰器自然也不会被调。判断标记就是日志尾部反复出现的 `#ServerLicenseSource - ... Cannot obtain ticket` / `Certificate used to sign the license is not signed by JetBrains root certificate`。在许可恢复之前，**需要 `Project` 的逻辑在本机验不了**，只能退到单文件 Java 验纯算法那一半（`PathPrefixes` 就是特意拆出来的，没有平台依赖，`javac -cp src/main/java` 能直接编）。
