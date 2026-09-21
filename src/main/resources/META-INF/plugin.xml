@@ -19,7 +19,7 @@
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>6.1.0</version>
+    <version>6.2.0</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -83,6 +83,25 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+      <ul>
+        <p>6.2.0</p>
+        <li>「选择图标或颜色」弹窗的三项现在都能<b>清空</b>：图标选下拉框第一项「（不设置）」，文字颜色和背景色各自点旁边的「清除」。
+          以前三样一旦设上就再也去不掉；顺带修掉「新建一条规则一点确定就必然写入一个图标」的老毛病——现在没选就不写 icon 属性
+        </li>
+        <li><b>文字颜色不再盖掉 Git 的状态色</b>：被改过（蓝）、已加（绿）、未纳入版本控制（红）的节点，文字颜色让给 Git。
+          配置里的颜色不会丢，文件回到「无改动」状态时自己回来；图标和背景色不受影响
+        </li>
+        <li>「未设置」的颜色色块改成白底加红斜杠，和「选了深色」区分得开</li>
+        <li>All three rows of the icon/color dialog can now be <b>cleared</b>: pick the first item "（不设置）" for the icon,
+          or the "清除" button next to each color. Previously none of them could be removed once set, and a brand-new rule
+          always got an icon written whether you picked one or not
+        </li>
+        <li>Text color no longer overrides the VCS status color: modified (blue), added (green) and unversioned (red) nodes
+          keep the Git color. Your color stays in the config and returns once the file is clean; icons and background colors
+          are unaffected
+        </li>
+        <li>The "no color" swatch is now white with a red slash, so it reads differently from a dark color</li>
+      </ul>
       <ul>
         <p>6.1.0</p>
         <li><b>配置文件改名推迟到「保存」那一刻</b>：开 IDE 不再动它。只有第一次点「抽离」并保存时才把
