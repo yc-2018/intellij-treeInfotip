@@ -82,6 +82,12 @@
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
       <ul>
+        <p>7.1.1</p>
+        <li>「目录备注」树的展开层数数字 1-10 加了方框，看着像按钮、也把那行的空白填起来</li>
+        <li>定位改成<b>单击</b>、<b>双击目录</b>展开 / 收起：以前双击目录会又展开又定位，两件事一起发生。单击一个文件立刻定位，单击目录短暂等一下（被双击打断就只展开）</li>
+        <li>The depth numbers 1-10 in the "Directory notes" tree now have boxed borders; navigation moved to <b>single-click</b> and double-click on a directory now only expands/collapses it (previously double-click both expanded and navigated)</li>
+      </ul>
+      <ul>
         <p>7.1.0</p>
         <li>去掉了 <tt>extension</tt> 属性和「按扩展名批量设置」菜单：一条规则只对应一个路径。命中规则简化为「完整路径全等」一种，不再有目录级 / 全项目的类型规则。老配置里带 extension 的规则在迁移时会被丢弃</li>
         <li>Removed the <tt>extension</tt> attribute and the "batch by extension" menu: a rule now maps to a single path. Matching is simplified to exact full-path equality; extension-based rules in old configs are dropped on migration</li>

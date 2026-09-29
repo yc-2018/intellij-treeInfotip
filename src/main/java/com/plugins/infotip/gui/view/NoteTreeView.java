@@ -22,6 +22,8 @@ import com.intellij.ui.PopupHandler;
 import com.intellij.ui.SimpleTextAttributes;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.treeStructure.Tree;
+import com.intellij.util.ui.JBUI;
+import com.intellij.util.ui.UIUtil;
 import com.plugins.infotip.PluginStartupActivity;
 import com.plugins.infotip.gui.IconsUtils;
 import com.plugins.infotip.gui.compone.MyTreeNode;
@@ -32,20 +34,25 @@ import com.plugins.infotip.storage.XmlStorage;
 import com.plugins.infotip.trees.TreesUtils;
 import org.jetbrains.annotations.NotNull;
 
+import javax.swing.BorderFactory;
 import javax.swing.BoxLayout;
 import javax.swing.Icon;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JTree;
+import javax.swing.SwingConstants;
+import javax.swing.Timer;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
+import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Rectangle;
+import java.awt.Toolkit;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
@@ -76,7 +83,7 @@ import java.util.Set;
  * </p>
  * <p>
  * 只有 {@code path}、自己没配任何规则的<b>纯目录容器</b>节点只为撑起层级，用文件夹图标、
- * 没有 {@code XmlEntity}，双击靠 {@link com.plugins.infotip.gui.compone.MyTreeNode#getFullPath()} 跳到对应目录。
+ * 没有 {@code XmlEntity}，单击靠 {@link com.plugins.infotip.gui.compone.MyTreeNode#getFullPath()} 跳到对应目录。
  * </p>
  * <p>
  * 被前面同「路径 + 扩展名」的规则盖住、永远不会生效的那些标灰显示（多半是手改配置时复制粘贴
@@ -126,6 +133,21 @@ public class NoteTreeView extends Tree {
      * 打开时默认展开几层
      */
     private static final int DEFAULT_DEPTH = 3;
+
+    /**
+     * 取不到系统双击间隔时的默认值，和 Swing 自己的默认一致
+     */
+    private static final int DEFAULT_CLICK_INTERVAL = 500;
+
+    /**
+     * 等第二下的时间上限：系统值太宽，等满了单击定位会显得卡，见 {@code MemberTreeView} 同名常量
+     */
+    private static final int MAX_CLICK_WAIT = 200;
+
+    /**
+     * 正排着队等双击间隔过去的那次定位，{@code null} 表示当前没有
+     */
+    private Timer pendingClick;
 
     /**
      * 当前选的展开层数，点上面那排数字改
@@ -193,19 +215,20 @@ public class NoteTreeView extends Tree {
      * 「展开」+ 数字 1..10 的那一行
      * <p>
      * 用一排可点的数字而不是拉杆：树是<b>整棵建好</b>的，点数字只是把它展开到第几层，没展开的
-     * 手动还能再展开，不像「文件成员」那样按层数重建。数字排在一行里、放得下几个是几个，
-     * 最多到 {@link #MAX_DEPTH}。
+     * 手动还能再展开，不像「文件成员」那样按层数重建。每个数字加个方框看着像按钮、也把这行的
+     * 空白填起来；数字排在一行里、放得下几个是几个，最多到 {@link #MAX_DEPTH}。
      * </p>
      */
     private JComponent buildDepthRow() {
-        final JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        final JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 3, 0));
         row.add(new JLabel("展开"));
         depthLabels.clear();
         for (int i = 1; i <= MAX_DEPTH; i++) {
             final int depth = i;
-            final JLabel label = new JLabel(String.valueOf(i));
+            final JLabel label = new JLabel(String.valueOf(i), SwingConstants.CENTER);
             label.setToolTipText("展开到第 " + i + " 层");
             label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            label.setOpaque(true);
             label.addMouseListener(new MouseAdapter() {
                 @Override
                 public void mousePressed(MouseEvent e) {
@@ -222,7 +245,7 @@ public class NoteTreeView extends Tree {
     }
 
     /**
-     * 当前层数那个数字加粗，其余正常
+     * 当前层数那个数字高亮：加粗、描边和底色都换一下，其余的用普通描边
      */
     private void highlightDepth() {
         for (int i = 0; i < depthLabels.size(); i++) {
@@ -230,6 +253,10 @@ public class NoteTreeView extends Tree {
             final boolean selected = (i + 1) == currentDepth;
             label.setFont(label.getFont().deriveFont(selected ? Font.BOLD : Font.PLAIN));
             label.setForeground(selected ? JBColor.foreground() : JBColor.gray);
+            label.setBackground(selected ? UIUtil.getListSelectionBackground(false) : UIUtil.getPanelBackground());
+            final Color line = selected ? JBColor.namedColor("Component.focusColor", JBColor.BLUE) : JBColor.border();
+            label.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createLineBorder(line), JBUI.Borders.empty(0, 5)));
         }
     }
 
@@ -339,31 +366,81 @@ public class NoteTreeView extends Tree {
         XmlFileUtils.ListenerSave(project, saveCallback);
     }
 
+    /**
+     * 单击定位、双击展开 / 收起
+     * <p>
+     * 双击一个有子节点的目录，树自己会切换展开状态，所以定位不能也挂在双击上——那样双击目录会
+     * 「又展开又定位」。改成<b>单击定位</b>：叶子（文件）没有展开状态，单击立刻跳；有子节点的目录
+     * <b>等一小会儿</b>（{@link #MAX_CLICK_WAIT}），期间来了第二下就把排着的定位撤掉、只留展开。
+     * 这套和「文件成员」列表是同一套做法，见那边的注释。
+     * </p>
+     */
     private void installNavigation() {
         addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
-                if (2 != e.getClickCount()) {
+                if (MouseEvent.BUTTON1 != e.getButton()) {
+                    cancelPending();
                     return;
                 }
                 final TreePath path = getPathForLocation(e.getX(), e.getY());
-                if (null == path) {
+                if (null == path || !(path.getLastPathComponent() instanceof MyTreeNode)) {
+                    //点在展开箭头或空白处，交给树自己处理
                     return;
                 }
-                final Object component = path.getLastPathComponent();
-                if (!(component instanceof MyTreeNode)) {
+                //第二下先把第一下排的队撤掉，剩下的展开 / 收起由树自己做
+                cancelPending();
+                if (1 != e.getClickCount()) {
                     return;
                 }
-                final MyTreeNode node = (MyTreeNode) component;
-                final Object obj = node.getUserEntity();
-                if (obj instanceof XmlEntity) {
-                    navigate(project, (XmlEntity) obj, node.isShadowed());
-                } else if (!trimmed(node.getFullPath()).isEmpty()) {
-                    //纯目录容器没有 entity，双击跳到它对应的目录（还在的话）
-                    TreesUtils.Navigation(project, node.getFullPath());
+                final MyTreeNode node = (MyTreeNode) path.getLastPathComponent();
+                if (node.isLeaf()) {
+                    navigateNode(node);
+                    return;
                 }
+                pendingClick = delayed(node);
             }
         });
+    }
+
+    /**
+     * 排一个延后的定位：等 {@link #MAX_CLICK_WAIT} 那么久，没被第二下打断就跳
+     */
+    private Timer delayed(MyTreeNode node) {
+        //javax.swing.Timer 的回调本来就在 EDT 上
+        final Timer timer = new Timer(clickInterval(), e -> {
+            pendingClick = null;
+            navigateNode(node);
+        });
+        timer.setRepeats(false);
+        timer.start();
+        return timer;
+    }
+
+    private void cancelPending() {
+        if (null != pendingClick) {
+            pendingClick.stop();
+            pendingClick = null;
+        }
+    }
+
+    private static int clickInterval() {
+        final Object value = Toolkit.getDefaultToolkit().getDesktopProperty("awt.multiClickInterval");
+        final int system = value instanceof Integer && (Integer) value > 0 ? (Integer) value : DEFAULT_CLICK_INTERVAL;
+        //系统值只当上限：它比人手双击的实际间隔宽得多，等满了会显得卡
+        return Math.min(system, MAX_CLICK_WAIT);
+    }
+
+    /**
+     * 定位一个节点：带 entity 的跳规则、纯容器按路径跳目录
+     */
+    private void navigateNode(MyTreeNode node) {
+        final Object obj = node.getUserEntity();
+        if (obj instanceof XmlEntity) {
+            navigate(project, (XmlEntity) obj, node.isShadowed());
+        } else if (!trimmed(node.getFullPath()).isEmpty()) {
+            TreesUtils.Navigation(project, node.getFullPath());
+        }
     }
 
     /**
@@ -464,7 +541,7 @@ public class NoteTreeView extends Tree {
      */
     private MyTreeNode dirNode(String label, String fullPath, Rule own, List<MyTreeNode> reveal) {
         if (null == own) {
-            //纯容器：只为撑起层级，用文件夹图标、不查失效，双击靠 fullPath 跳目录
+            //纯容器：只为撑起层级，用文件夹图标、不查失效，单击靠 fullPath 跳目录
             return new MyTreeNode(label).setFullPath(fullPath).setIcon(fit(AllIcons.Nodes.Folder));
         }
         final XmlEntity entity = own.entity;
@@ -599,11 +676,10 @@ public class NoteTreeView extends Tree {
     }
 
     /**
-     * 双击一条备注：能落到真实文件就跳文件，否则跳到 {@code DirectoryV7.xml} 里这条规则所在的行
+     * 定位一条备注：能落到真实文件就跳文件，否则跳到 {@code DirectoryV7.xml} 里这条规则所在的行
      * <p>
-     * 跳 XML 覆盖三种双击没反应的情况：路径已经被删或改名的（列表里标红那些）、
-     * 被前面同键规则覆盖而不生效的（列表里标灰加删除线那些），
-     * 以及只写了 extension 的全项目类型规则（本来就没有路径可跳）。
+     * 跳 XML 覆盖两种在项目树上定位不到的情况：路径已经被删或改名的（列表里标红那些）、
+     * 被前面同路径规则覆盖而不生效的（列表里标灰加删除线那些）。
      * </p>
      * <p>
      * 这里重新查一次 VFS 而不是看 {@link MyTreeNode#isMissing()}：那个状态是建节点时算的，
@@ -857,7 +933,7 @@ public class NoteTreeView extends Tree {
             final String text = String.valueOf(node.getUserObject());
             if (node.isMissing()) {
                 append(text, SimpleTextAttributes.ERROR_ATTRIBUTES);
-                append("  路径已失效（双击定位到 XML）", SimpleTextAttributes.GRAYED_ATTRIBUTES);
+                append("  路径已失效（单击定位到 XML）", SimpleTextAttributes.GRAYED_ATTRIBUTES);
             } else if (node.isShadowed()) {
                 //规则文字本身加灰色和删除线，标记为"作废"状态
                 final SimpleTextAttributes strikethroughGray = new SimpleTextAttributes(
