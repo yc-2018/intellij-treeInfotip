@@ -74,8 +74,8 @@ object OldPluginConflictNotifier {
             manager.getNotificationGroup(NOTIFICATION_GROUP)
                 .createNotification(
                     "检测到旧版 TreeInfotip",
-                    "旧 id（$OLD_PLUGIN_ID）的 TreeInfotip 还在启用中。6.0.0 起两边读的已经不是同一个" +
-                            "配置文件（本插件读 DirectoryV6.xml，旧版只认 DirectoryV3.xml），所以旧版看不到" +
+                    "旧 id（$OLD_PLUGIN_ID）的 TreeInfotip 还在启用中。两边读的已经不是同一个" +
+                            "配置文件（本插件 7.0.0 起读 DirectoryV7.xml，旧版只认 DirectoryV3.xml），所以旧版看不到" +
                             "新加的备注；目录树还是会被装饰两遍、右键菜单里会出现两个「目录备注」，" +
                             "而且旧版跑在后面时会把悬浮提示、覆盖显示名称这些新设置覆盖掉。建议只保留一个。",
                     NotificationType.WARNING

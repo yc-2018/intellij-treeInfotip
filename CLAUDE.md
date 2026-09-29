@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概览
 
-TreeInfoTip Notes 是一个 IntelliJ 平台插件，给项目目录树的节点加备注、颜色、图标、悬浮提示、删除线和自定义显示名。所有配置都存在**项目根目录的 `DirectoryV6.xml`** 里，不用 IDE 的持久化设置。
+TreeInfoTip Notes 是一个 IntelliJ 平台插件，给项目目录树的节点加备注、颜色、图标、悬浮提示、删除线和自定义显示名。所有配置都存在**项目根目录的 `DirectoryV7.xml`** 里，不用 IDE 的持久化设置。
 
-配置文件名 V6 / V3 两个都认（读取时 V6 优先、退回 V3）。**改名不在启动时做**，只在用户点「抽离」并保存的那一刻发生——细节和「文件名跟着内容走」这条不变量见 `docs/path-prefix.md`。
+配置文件 7.0.0 起是**嵌套树**结构（一个 `<node>` 套下一层 `<node>`，每层 `path` 只写相对上一层那截），运行时**只认 V7**。开项目时若只有旧的 `DirectoryV6.xml` / `DirectoryV3.xml`，`XmlFileUtils.migrateIfNeeded` 按它的内容生成一份 V7 并发通知，**旧文件原样保留、不改名也不删**——细节见 `docs/v7-migration.md`。
 
 ## 分册文档：先看这张表
 
@@ -18,7 +18,7 @@ TreeInfoTip Notes 是一个 IntelliJ 平台插件，给项目目录树的节点�
 |---|---|
 | `docs/platform-constraints.md` | **改任何 Swing / PSI / 线程相关代码之前**。读锁、导航、图标、跨版本 API 差异，全是踩过的坑和历史事故 |
 | `docs/build-and-release.md` | 要编译打包、跑 `runPluginVerifier`；动 Kotlin 代码；**发新版本**（版本号规则和 6 步流程在里面） |
-| `docs/path-prefix.md` | 改 `PathPrefixes` / `PathPrefixEditor` / `XmlPrefixDialog`，或碰配置文件改名 |
+| `docs/v7-migration.md` | 改 `LegacyReader` / `NodePaths` / `NodeWriter` / `V7Migrator`，或碰嵌套结构的读写、老配置迁移逻辑 |
 | `docs/tool-window.md` | 改 `NoteTreeView` / `MemberTreeView` / `HelpView` / `PsiCommentUtils` |
 | `docs/publishing.md` | 改 `plugin.xml` 的 id / name / description，或要上传 Marketplace |
 
@@ -56,30 +56,33 @@ JAVA_HOME="D:/green/jdks/jdk-17.0.8" /d/green/Gradle/dists/gradle-7.6.4/bin/grad
 ### 数据流
 
 ```
-DirectoryV6.xml（项目根目录）
+DirectoryV7.xml（项目根目录）
    ↓ PluginStartupActivity.runActivity（postStartupActivity）
-   ↓ XmlFileUtils.loadXmlFile → XmlStorage.parsing（这一步把 prefix 展开成完整路径）
+   ↓ XmlFileUtils.migrateIfNeeded（只有 V7 不存在、又找得到 V6/V3 时才转一次）
+   ↓ XmlFileUtils.loadXmlFile → XmlStorage.parsing（先序递归，把每层 path 累加成完整路径）
 XmlStorage.XML_STORAGE_LIST：每个 Project 一份 List<XmlEntity> 内存缓存
    ↓ TreesUtils.getMatchPath(virtualFile, project)
    ↓ TreesStyle.setStyle(presentation, entity, name)
-PresentationData：图标 / locationString / tooltip / presentableText / 文字色 / 删除线 / 背景色
+PresentationData：图标 / locationString(note) / tooltip / presentableText(label) / 文字色(color) / 删除线(strike) / 背景色(bg)
 ```
 
 装饰有**两个入口**，都汇到 `TreesStyle.setStyle`：`TreeOnlyTextProvider`（`treeStructureProvider`）和 `IgnoreViewNodeDecorator`（`projectViewNodeDecorator`）。所以改渲染只需要改 `TreesStyle` 一个地方。
 
-`XmlChangeListener` 挂了 PSI 树监听，XML 一变就重新 `parsing`，手改文件也能立刻生效。
+`XmlChangeListener` 挂了 PSI 树监听，XML 一变就重新 `parsing`，手改文件也能立刻生效。**只认 V7**：老文件在迁移那一刻读完就退休，之后再改它不触发重新解析。
 
 ### 匹配优先级（`TreesUtils.getMatchPath`）
 
-一条 `<tree>` 有两种形态，命中优先级从高到低：
+内存里的 `XmlEntity.path` 一律是**完整路径**，所以匹配逻辑完全不知道嵌套这回事，和平铺时代一个字没改。一条规则有两种形态，命中优先级从高到低：
 
-| 规则 | 写法 | 命中范围 |
+| 规则 | 完整路径形态 | 命中范围 |
 |---|---|---|
-| 路径规则 | `<tree path="/a/B.java" .../>` | 路径全等的那一个文件或目录，优先级最高 |
-| 目录级类型规则 | `<tree path="/src/main/java" extension="java" .../>` | 该目录及各级子目录下的 `.java`；多条同时命中时 `path` 更长的赢 |
-| 全项目类型规则 | `<tree extension="java" .../>` | 整个项目的 `.java`，只做兜底 |
+| 路径规则 | path=`/a/B.java`，无 extension | 路径全等的那一个文件或目录，优先级最高 |
+| 目录级类型规则 | path=`/src/main/java` + extension=`java` | 该目录及各级子目录下的 `.java`；多条同时命中时 `path` 更长的赢 |
+| 全项目类型规则 | 只有 extension=`java`（挂在 `<trees>` 直下） | 整个项目的 `.java`，只做兜底 |
 
-扩展名规则只作用于文件，目录节点不参与。路径末尾多写的 `/` 由 `trimTrailingSlash` 归一化，只写 `/` 等于整个项目。
+扩展名规则只作用于文件，目录节点不参与。路径末尾多写的 `/` 由 `trimTrailingSlash` 归一化。
+
+**嵌套不改变命中结果**：只有完整路径相同的规则才互相竞争（同优先级先到先得），而它们归堆后都落在同一个父 `<node>` 下、相对顺序原样保留。所以「置顶」只需挪到**同层兄弟**的最前面，不用像平铺时代挪到整个文件头部。
 
 ### 右键菜单
 
@@ -91,11 +94,13 @@ PresentationData：图标 / locationString / tooltip / presentableText / 文字�
 
 ### 写 XML
 
-所有属性写入都走 `XmlStorage.setAttributeIfNotEmpty`：值为空就把已存在的属性删掉（`XmlTag.setAttribute(name, null)` 是删除语义）。`XmlStorage.tree()` 解析时会把缺失属性归一成 `""`，直接回写就会在文件里堆出 `extension="" icon=""` 这类噪音，所以不要绕过这个方法。
+节点定位、新建、拆分、清理空壳全在 `NodeWriter`；`XmlStorage` 的 `create/modify/remove/moveToTop` 调它。属性写入走 `NodeWriter.setIfNotEmpty`：值为空就把已存在的属性删掉（`XmlTag.setAttribute(name, null)` 是删除语义）。`XmlStorage.parsing` 解析时会把缺失属性归一成 `""`，直接回写就会在文件里堆出 `extension="" icon=""` 这类噪音，所以不要绕过这个方法。
 
-新增一个可配置属性要同时改四处：`XmlEntity` 加字段、`XmlStorage` 加常量并在 `tree()` / `modify()` / `create()` 三处登记、`TreesStyle.setStyle` 应用到 `PresentationData`、最后加对应 action 并在 `plugin.xml` 注册。**还有第五处**：`XmlFileUtils.XML_TEMPLATE` 的注释和 `HelpView.attributes()` 的参数列表都要补一条，否则用户看到的说明会缺项。
+两条嵌套特有的不变量：**带 `extension` 的类型规则一律写成不带 `path` 的独立子节点**，不往目录节点自己身上挂（`/src` 的目录备注和「/src 下的 *.java」是两条互不相干的规则，挤在一个标签上会互相牵连）；**只有 `path` 的纯容器节点**删光底下规则后要跟着消失（`NodeWriter.deleteRule` → `prune` 自下而上清空壳）。
 
-新项目第一次加备注时由 `XmlFileUtils.createXmlFile` 写出 `XML_TEMPLATE`，`<trees>` 下面带一段注释列全参数和命中优先级（5.6.0 起，之前是个空 `<trees/>`）——这文件躺在项目根目录，用户迟早点开它，而 `presentableText`、`tooltipTitle` 这些参数名单看名字猜不全。6.0.0 之前这段注释还得避开「格式化」按钮的正则（`<trees>`、带空格的 `<tree `、行尾 `>` 接行首 `<`），那个按钮已经随 XML 工具窗口一起去掉了，这条约束不再适用；**XML 注释里不能出现连续两个减号**这条仍然有效。
+新增一个可配置属性要同时改这些地方：`XmlEntity` 加字段、`XmlStorage` 加常量并补进 `SETTING_ATTRIBUTES`、`toEntity()` / `writeSettings()` 两处登记、`V7Migrator.attributes()` 和 `LegacyReader.tree()`（老属性名映射）各补一条、`TreesStyle.setStyle` 应用到 `PresentationData`、加对应 action 并在 `plugin.xml` 注册。**还有说明文档**：`XmlFileUtils.XML_FOOTER` 的注释和 `HelpView.attributes()` 的参数列表都要补一条。
+
+新项目第一次加备注时由 `XmlFileUtils.createXmlFile` 写出 `XML_TEMPLATE`（`XML_HEADER` + 空 `<trees>` + `XML_FOOTER`），footer 那段注释列全参数、嵌套写法和命中优先级——这文件躺在项目根目录，用户迟早点开它。**XML 注释里不能出现连续两个减号**这条约束仍然有效。
 
 ### 回调注册表
 

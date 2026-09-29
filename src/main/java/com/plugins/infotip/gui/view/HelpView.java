@@ -26,7 +26,7 @@ import javax.swing.ScrollPaneConstants;
 /**
  * A <code>HelpView</code> Class
  * <p>
- * 「说明」tab：一页 HTML，讲清楚菜单怎么用、{@code DirectoryV6.xml} 有哪些参数、命中优先级怎么算。
+ * 「说明」tab：一页 HTML，讲清楚菜单怎么用、{@code DirectoryV7.xml} 有哪些参数、命中优先级怎么算。
  * </p>
  * <p>
  * 做成 tab 而不是弹窗：参数表要对着配置文件看，弹窗一关就没了，而侧边栏可以一直开着。
@@ -101,7 +101,7 @@ public class HelpView extends JEditorPane {
     }
 
     /**
-     * 工具栏上的「打开 DirectoryV6.xml」，省得用户自己去项目根目录里翻
+     * 工具栏上的「打开 DirectoryV7.xml」，省得用户自己去项目根目录里翻
      * <p>
      * 文件不存在时只提示，<b>不顺手建一个</b>：空配置文件对用户没用，而右键菜单加第一条备注时
      * 会自动建（{@link XmlFileUtils#createXmlFile}），带着参数说明的注释也是那时写进去的。
@@ -110,14 +110,14 @@ public class HelpView extends JEditorPane {
     private class OpenXmlAction extends AnAction {
 
         OpenXmlAction() {
-            super("打开 DirectoryV6.xml", "打开项目根目录下的配置文件", AllIcons.FileTypes.Xml);
+            super("打开 DirectoryV7.xml", "打开项目根目录下的配置文件", AllIcons.FileTypes.Xml);
         }
 
         @Override
         public void actionPerformed(@NotNull AnActionEvent e) {
             final XmlFile xmlFile = XmlFileUtils.getXmlFile(project);
             if (null == xmlFile) {
-                Messages.showInfoMessage(project, "这个项目还没有 DirectoryV6.xml。\n"
+                Messages.showInfoMessage(project, "这个项目还没有 DirectoryV7.xml。\n"
                         + "在项目树上右键任意文件或目录 → 目录备注 → 添加文字备注，加第一条备注时会自动建出来。", "打开配置文件");
                 return;
             }
@@ -148,7 +148,6 @@ public class HelpView extends JEditorPane {
                 + menu()
                 + tabs()
                 + attributes()
-                + prefixes()
                 + priority()
                 + example()
                 + "</body></html>";
@@ -157,7 +156,7 @@ public class HelpView extends JEditorPane {
     private static String intro() {
         return "<h3>TreeInfoTip Notes</h3>"
                 + "<p>给项目树上的文件和目录加备注、颜色、图标、悬浮提示、删除线，也能改掉节点显示的名字。"
-                + "配置全部存在<b>项目根目录的 DirectoryV6.xml</b> 里，跟着项目走，"
+                + "配置全部存在<b>项目根目录的 DirectoryV7.xml</b> 里，跟着项目走，"
                 + "提交进版本库整个团队就能共用。</p>";
     }
 
@@ -193,83 +192,39 @@ public class HelpView extends JEditorPane {
                 + "<b>单击</b>跳到定义处，<b>双击</b>收缩或展开。上面的「方法」「属性」勾选框控制显示哪一类，"
                 + "「层数」拉杆控制展开几层，最多 10 层。注释按四级找：文档注释、多行注释、"
                 + "行尾的单行注释、紧贴在上方的单行注释，命中一级就不再往下找。</li>"
-                + "<li><b>目录备注</b>：DirectoryV6.xml 里的规则一行一条。<b>双击</b>跳到对应的文件；"
+                + "<li><b>目录备注</b>：DirectoryV7.xml 里的规则一行一条。<b>双击</b>跳到对应的文件；"
                 + "路径已经不存在的<b>标红排在最前面</b>，双击跳到 XML 里那条规则所在的行；"
                 + "被前面同路径规则盖住、永远不生效的<b>标灰</b>。"
                 + "右键有<b>置顶</b>和<b>删除</b>，都支持 Ctrl 多选；工具栏上还有「刷新」"
-                + "「清除失效路径」「清理重复规则」和「抽离或还原路径前缀」。</li>"
+                + "「清除失效路径」和「清理重复规则」。</li>"
                 + "<li><b>说明</b>：就是这一页。</li>"
-                + "</ul>"
-                + "<p>「抽离或还原路径前缀」会开一个弹窗，直接显示配置文件正文，也能在那里改完保存，"
-                + "详见下面「抽离路径前缀」一节。</p>";
-    }
-
-    /**
-     * 九个参数要和 {@link com.plugins.infotip.storage.XmlStorage} 里的常量对得上，
-     * 新增可配置属性时这里也要补一条
-     */
-    private static String attributes() {
-        return "<h4>DirectoryV6.xml 的参数</h4>"
-                + "<p>一条 &lt;tree&gt; 就是一条规则，参数<b>全是可选的</b>，按需要写几个：</p>"
-                + "<ul>"
-                + "<li><tt>path</tt> — 相对项目根目录的路径，以 / 开头，例如 <tt>/src/main/java</tt>；"
-                + "只写 <tt>/</tt> 表示整个项目。末尾多写的 / 会被忽略。</li>"
-                + "<li><tt>extension</tt> — 扩展名，<b>不带点</b>，例如 <tt>java</tt>。"
-                + "只作用于文件，目录节点不参与；和 <tt>path</tt> 一起写，表示这个目录"
-                + "连各级子目录下的这类文件。</li>"
-                + "<li><tt>title</tt> — 备注文字，灰色跟在节点名后面。</li>"
-                + "<li><tt>presentableText</tt> — 覆盖节点显示的名字。</li>"
-                + "<li><tt>tooltipTitle</tt> — 鼠标悬浮时的提示，可以写多行。</li>"
-                + "<li><tt>icon</tt> — 换图标，填 AllIcons 里的字段路径，例如 <tt>Nodes.Folder</tt>。</li>"
-                + "<li><tt>textColor</tt> — 文字颜色，十进制 <tt>r,g,b</tt>，例如 <tt>255,0,0</tt>。</li>"
-                + "<li><tt>backgroundColor</tt> — 背景色，写法同上。</li>"
-                + "<li><tt>strikethrough</tt> — 填 <tt>true</tt> 给节点加删除线。</li>"
-                + "<li><tt>prefix</tt> — 引用 <tt>prefixes</tt> 里声明的某个 id，"
-                + "<tt>path</tt> 只写剩下那截。这个不用手写，用工具栏的"
-                + "「抽离或还原路径前缀」来回切就行。</li>"
                 + "</ul>";
     }
 
     /**
-     * 抽离逻辑的判据要和 {@link com.plugins.infotip.storage.PathPrefixes} 里的
-     * {@code gain} 对得上，改算法时这里也要改
+     * 八个参数要和 {@link com.plugins.infotip.storage.XmlStorage} 里的常量对得上，
+     * 新增可配置属性时这里也要补一条
      */
-    private static String prefixes() {
-        return "<h4>抽离路径前缀</h4>"
-                + "<p>重复的长目录可以提到一张前缀表里只写一遍。入口在「目录备注」工具栏的"
-                + "「抽离或还原路径前缀」，开出来的弹窗直接显示配置文件正文，上面四个按钮："
-                + "<b>抽离</b>、<b>还原</b>、<b>清理前缀</b>、<b>保存</b>。</p>"
-                + "<p><b>只有「保存」会落盘</b>，前三个都只改弹窗里的文本，"
-                + "所以不满意就点「还原」，或者直接关掉窗口，文件一个字都不会变。"
-                + "运行时的效果也完全不变——插件读进内存时会把 <tt>prefix</tt> 展开回完整路径。</p>"
-                + "<h4>什么样的目录会被抽出来</h4>"
-                + "<p><b>没有「几条起步」这个门槛</b>，判据是<b>净收益为正</b>：</p>"
-                + "<pre>"
-                + "条数 × (前缀长 - id长 - 10)\n"
-                + "     - (前缀长 + id长 + 25)"
-                + "</pre>"
-                + "<p>那个 10 是每条规则多写一个 <tt>prefix=\"id\"</tt> 的开销，"
-                + "25 是 <tt>&lt;prefix id=\"\" path=\"\"/&gt;</tt> 这一行的开销。"
-                + "所以<b>前缀越长越容易够本</b>：60 多个字符的长目录 2 条就能抽出来，"
-                + "而 <tt>/src</tt> 这种再多条也抽不出来——省下的 4 个字符还不够写 <tt>prefix=\"src\"</tt>。"
-                + "两条规则没被抽走，多半就是它们的公共目录太短。</p>"
-                + "<p>id 取目录的最后一段，并<b>掐掉和上一级目录重复的头部</b>："
-                + "<tt>CarrierRecruit</tt> 挂在 <tt>carrierManagement</tt> 底下，留 <tt>recruit</tt>。"
-                + "这不是为了好看——id 每条规则都要写一遍，全名会让上面那个式子直接变成负数。</p>"
-                + "<p><b>id 可以手改</b>，改成中文也行。再点一次「抽离」时，"
-                + "已经在文件里的 id 会原样留着，不会被打回自动生成的名字。</p>"
-                + "<h4>文件名跟着内容走</h4>"
-                + "<p>抽离过的文件旧版插件读不了（它不认 <tt>prefix</tt>，会把剩下那截当成完整路径），"
-                + "所以第一次抽离并保存时，配置文件会从 <tt>DirectoryV3.xml</tt> 改名为 "
-                + "<tt>DirectoryV6.xml</tt>，新旧两版从此各读各的、互相读不坏。"
-                + "点「还原」时可以选择把名字换回去。<b>改名只发生在点「保存」的那一刻</b>，"
-                + "开 IDE 不会动它。</p>"
-                + "<h4>红黄两色</h4>"
-                + "<p>弹窗打开时会给有问题的 <tt>prefix</tt> 声明上底色："
-                + "<b>红色</b>是这个目录在磁盘上已经没有了，<b>黄色</b>是没有任何规则引用它。"
-                + "点「清理前缀」一次删干净：没人引用的只删声明；"
-                + "路径失效的会<b>连引用它的规则一起删</b>——只删声明会让那些规则剩下半截相对路径，"
-                + "变成指向别处的错规则，比留着失效的更糟。</p>";
+    private static String attributes() {
+        return "<h4>DirectoryV7.xml 的参数</h4>"
+                + "<p>配置是<b>嵌套</b>的：一个 &lt;node&gt; 可以套下一层 &lt;node&gt;，每层的 "
+                + "<tt>path</tt> 只写相对上一层的那一截，完整路径由各层拼起来。一个 &lt;node&gt; "
+                + "就是一条规则，参数<b>全是可选的</b>，按需要写几个：</p>"
+                + "<ul>"
+                + "<li><tt>path</tt> — 相对上一层的路径，例如 <tt>src/main/java</tt>；"
+                + "写在最外层就是相对项目根目录。末尾多写的 / 会被忽略。</li>"
+                + "<li><tt>extension</tt> — 扩展名，<b>不带点</b>，例如 <tt>java</tt>。"
+                + "只作用于文件，目录节点不参与；指所在目录连各级子目录下的这类文件。"
+                + "直接挂在最外层、只写 <tt>extension</tt> 的对整个项目生效。</li>"
+                + "<li><tt>note</tt> — 备注文字，灰色跟在节点名后面。</li>"
+                + "<li><tt>label</tt> — 覆盖节点显示的名字。</li>"
+                + "<li><tt>tooltip</tt> — 鼠标悬浮时的提示，可以写多行。</li>"
+                + "<li><tt>icon</tt> — 换图标，填 AllIcons 里的字段路径，例如 <tt>Nodes.Folder</tt>。</li>"
+                + "<li><tt>color</tt> — 文字颜色，十进制 <tt>r,g,b</tt>，例如 <tt>255,0,0</tt>。</li>"
+                + "<li><tt>bg</tt> — 背景色，写法同上。</li>"
+                + "<li><tt>strike</tt> — 填 <tt>true</tt> 给节点加删除线。</li>"
+                + "</ul>"
+                + "<p>只为了分层而存在、自己什么都没配的节点不算规则，删光底下的规则时会跟着消失。</p>";
     }
 
     private static String priority() {
@@ -295,11 +250,12 @@ public class HelpView extends JEditorPane {
         return "<h4>例子</h4>"
                 + "<pre>"
                 + "&lt;trees&gt;\n"
-                + "  &lt;tree path=\"/src\" title=\"源码\"/&gt;\n"
-                + "  &lt;tree path=\"/old\"\n"
-                + "        strikethrough=\"true\"/&gt;\n"
-                + "  &lt;tree path=\"/api\" extension=\"ts\"\n"
-                + "        textColor=\"255,0,0\"/&gt;\n"
+                + "  &lt;node path=\"src\" note=\"源码\"&gt;\n"
+                + "    &lt;node path=\"old\"\n"
+                + "          strike=\"true\"/&gt;\n"
+                + "    &lt;node extension=\"ts\"\n"
+                + "          color=\"255,0,0\"/&gt;\n"
+                + "  &lt;/node&gt;\n"
                 + "&lt;/trees&gt;"
                 + "</pre>";
     }

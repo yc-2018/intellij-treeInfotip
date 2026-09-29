@@ -4,7 +4,6 @@ import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.fileTypes.LanguageFileType;
 import com.intellij.openapi.project.Project;
@@ -39,14 +38,22 @@ public class XmlFileUtils {
      * 现在用的配置文件名。
      *
      * <p>
-     * 5.x 一直叫 {@code DirectoryV3.xml}，6.0.0 跟着大版本号改成 V6：抽离过路径前缀的文件旧版插件读不了
-     * （它不认 {@code prefix} 属性，会把相对部分当成完整路径），换个名字就让新旧两版各找各的文件，
-     * 不会互相读坏。老文件<b>不在启动时改名</b>——没抽离过的文件旧版读得好好的，开个 IDE 就把用户
-     * 项目里一个会进版本库的文件改名太唐突。改名只在用户点了「抽离」并保存时才由
-     * {@link #renameConfigFile} 做，见 {@code XmlPrefixDialog}。
+     * 7.0.0 起是 {@code DirectoryV7.xml}，内容改成了嵌套结构、属性名也全换了，老版本插件读不了，
+     * 所以换个文件名让新旧各读各的。<b>老文件不改名也不删</b>：启动时发现只有老的，就按它的内容
+     * 另外生成一份 V7，原件原样留着，见 {@link #migrateIfNeeded}。
      * </p>
      */
-    private static final String XMLFileName = "DirectoryV6.xml";
+    private static final String XMLFileName = "DirectoryV7.xml";
+
+    /**
+     * 6.x 的文件名，只在迁移时读一次
+     */
+    private static final String V6_FILE_NAME = "DirectoryV6.xml";
+
+    /**
+     * 5.x 及之前的文件名，只在迁移时读一次，V6 不在时才轮到它
+     */
+    private static final String LEGACY_XML_FILE_NAME = "DirectoryV3.xml";
 
     /**
      * 现在用的文件名，给界面文案用
@@ -54,18 +61,6 @@ public class XmlFileUtils {
     public static String currentFileName() {
         return XMLFileName;
     }
-
-    /**
-     * 老的文件名，给界面文案用
-     */
-    public static String legacyFileName() {
-        return LEGACY_XML_FILE_NAME;
-    }
-
-    /**
-     * 5.x 及之前的文件名，只在还没有 V6 时读它，读到就改名
-     */
-    private static final String LEGACY_XML_FILE_NAME = "DirectoryV3.xml";
 
     /**
      * 通知分组 id，必须和 {@code plugin.xml} 里注册的那个一致
@@ -190,50 +185,59 @@ public class XmlFileUtils {
     }
 
     /**
-     * 新项目第一次配置时写出去的 {@code DirectoryV6.xml} 模板
-     * <p>
-     * {@code <trees>} 下面那段注释是给手改文件的人看的。这个文件躺在项目根目录，用户迟早会点开它，
-     * 而 {@code presentableText}、{@code tooltipTitle} 这些参数名单看名字猜不全，更猜不出命中优先级。
-     * </p>
-     * <p>
-     * 6.0.0 之前这段注释还要避开「格式化」按钮的正则（{@code <trees>}、带空格的 {@code <tree }、
-     * 行尾 {@code >} 接行首 {@code <}），那个按钮已经随 XML 工具窗口一起去掉了，约束不再适用。
-     * XML 注释本身不允许出现连续两个减号，这条仍然有效。
-     * </p>
+     * {@code <trees>} 之前的部分
      */
-    private static final String XML_TEMPLATE = String.join("\r\n",
+    private static final String XML_HEADER = String.join("\r\n",
       "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
       "<!-- JetBrains 安装插件【TreeInfoTip Notes / 目录树备注】 安装后就能看到目录后面的备注信息 -->",
-      "<trees>",
-      "</trees>",
+      "");
+
+    /**
+     * {@code </trees>} 之后那段参数说明
+     * <p>
+     * 这段注释是给手改文件的人看的。文件躺在项目根目录，用户迟早会点开它，而 {@code label}、
+     * {@code tooltip} 这些参数名单看名字猜不全，更猜不出嵌套规则和命中优先级。
+     * </p>
+     * <p>
+     * <b>XML 注释里不能出现连续两个减号</b>，改这段时注意。
+     * </p>
+     */
+    private static final String XML_FOOTER = "\r\n" + String.join("\r\n",
       "<!--",
-      "  TreeInfoTip Notes 的配置文件：一条 <tree> 就是一条规则，存盘立刻生效，不用重启 IDE。",
+      "  TreeInfoTip Notes 的配置文件：一个 node 就是一条规则，存盘立刻生效，不用重启 IDE。",
       "  平时不用手写，右键项目树上的文件或目录，走「目录备注」菜单加就行。",
       "",
+      "  节点是嵌套的，每层的 path 只写相对上一层的那一截，完整路径由各层拼起来：",
+      "",
+      "    <trees>",
+      "        <node path=\"src/main/java\">",
+      "            <node path=\"Foo.java\" note=\"入口\"/>",
+      "            <node extension=\"java\" color=\"255,0,0\"/>",
+      "        </node>",
+      "    </trees>",
+      "",
+      "  只为了分层而存在、自己什么都没配的节点不算规则，删光底下的规则时会跟着消失。",
+      "",
       "  参数全是可选的，按需要写几个：",
-      "    path             相对项目根目录的路径，以 / 开头；只写 / 表示整个项目",
-      "    extension        扩展名，不带点，只作用于文件；和 path 一起写表示该目录连子目录下的这类文件",
-      "    title            备注文字，灰色跟在节点名后面",
-      "    presentableText  覆盖节点显示的名字",
-      "    tooltipTitle     鼠标悬浮时的提示，可以写多行",
-      "    icon             换图标，填 AllIcons 里的字段路径，例如 Nodes.Folder",
-      "    textColor        文字颜色，十进制 r,g,b，例如 255,0,0",
-      "    backgroundColor  背景色，写法同上",
-      "    strikethrough    填 true 给节点加删除线",
-      "    prefix           引用下面 prefixes 里声明的某个 id，path 只写剩下的那截",
+      "    path       相对上一层的路径；写在最外层就是相对项目根目录",
+      "    extension  扩展名，不带点，只作用于文件；指所在目录连各级子目录下的这类文件",
+      "    note       备注文字，灰色跟在节点名后面",
+      "    label      覆盖节点显示的名字",
+      "    tooltip    鼠标悬浮时的提示，要换行写 &#10;",
+      "    icon       换图标，填 AllIcons 里的字段路径，例如 Nodes.Folder",
+      "    color      文字颜色，十进制 r,g,b，例如 255,0,0",
+      "    bg         背景色，写法同上",
+      "    strike     填 true 给节点加删除线",
       "",
-      "  路径前缀可以抽出来，重复的长目录只写一遍：先在 trees 里加一个 prefixes 段，",
-      "  里面一条 prefix 声明一个 id 和它的完整路径，再让 tree 用 prefix= 指过去。",
-      "  这件事不用手写，侧边栏「目录备注」工具栏上的「抽离或还原路径前缀」按钮来回切。",
-      "  抽不抽看净收益：条数 x (前缀长 - id长 - 10) - (前缀长 + id长 + 25) 为正才抽，",
-      "  没有「几条起步」的门槛，长目录 2 条就够本，/src 这种再多条也抽不出来。",
-      "  id 可以手改成看得懂的名字（中文也行），重新抽离时会留着不动。",
-      "",
-      "  命中优先级：path 全等的最高，其次 path 加 extension（path 更长的赢），",
-      "  最后是只写 extension 的全项目规则。同优先级时写在前面的那条赢，所以侧边栏",
-      "  「目录备注」里的「置顶」是真的把标签挪到文件最前面。",
-      "-->"
-      );
+      "  命中优先级：完整路径全等的最高，其次路径加 extension（路径更长的赢），",
+      "  最后是直接挂在 trees 下、只写 extension 的全项目规则。同优先级时写在前面的那条赢，",
+      "  所以侧边栏「目录备注」里的「置顶」是真的把标签挪到同层兄弟的最前面。",
+      "-->");
+
+    /**
+     * 新项目第一次配置时写出去的 {@code DirectoryV7.xml} 模板
+     */
+    private static final String XML_TEMPLATE = XML_HEADER + "<trees>\r\n</trees>" + XML_FOOTER;
 
     /**
      * 创建文件
@@ -247,7 +251,7 @@ public class XmlFileUtils {
         }
         LanguageFileType xml = (LanguageFileType) FileTypeManager.getInstance().getStdFileType("XML");
         PsiFile pf = PsiFileFactory.getInstance(project).createFileFromText(XMLFileName, xml, XML_TEMPLATE);
-        //新建一律用 V6，老名字只在迁移时出现
+        //新建一律用 V7，老名字只在迁移时读一次
         return loadSaveFileXml(project, pf.getText(), XMLFileName);
     }
 
@@ -273,126 +277,103 @@ public class XmlFileUtils {
     }
 
     /**
-     * 找配置文件：V6 优先，没有就退回老的 V3
+     * 找当前在用的配置文件，也就是 V7
      *
      * <p>
-     * 这里只读不改名。改名是 {@link #renameConfigFile} 的事，它要开写操作，
-     * 而本方法的调用点里有在写操作和 PSI 事件回调里的，不能在那些地方再嵌一层。
+     * <b>只认 V7</b>。老文件是迁移的输入，不是运行时的配置源——真让它当配置源，
+     * 用户在项目树上改一条备注就得写回老格式，V7 的嵌套结构反而落不了地。
      * </p>
      *
      * @param project 项目
      * @return 找不到返回 null
      */
     public static VirtualFile findConfigFile(Project project) {
+        return findByName(project, XMLFileName);
+    }
+
+    /**
+     * 找可以迁移的老配置：V6 优先，没有就退回 V3
+     *
+     * @return 两个都没有时返回 null
+     */
+    private static VirtualFile findLegacyFile(Project project) {
+        final VirtualFile v6 = findByName(project, V6_FILE_NAME);
+        return null != v6 ? v6 : findByName(project, LEGACY_XML_FILE_NAME);
+    }
+
+    private static VirtualFile findByName(Project project, String fileName) {
         if (project == null || project.getBasePath() == null) {
             return null;
         }
-        final LocalFileSystem lfs = LocalFileSystem.getInstance();
-        final VirtualFile current = lfs.refreshAndFindFileByIoFile(
-                new File(project.getBasePath() + File.separator + XMLFileName));
-        if (null != current) {
-            return current;
+        return LocalFileSystem.getInstance().refreshAndFindFileByIoFile(
+                new File(project.getBasePath() + File.separator + fileName));
+    }
+
+    /**
+     * 开项目时把老配置转成 V7
+     *
+     * <p>
+     * 判据就一条：<b>已经有 V7 就什么都不做</b>。没有才去找 V6 / V3，找到就按它的内容生成一份
+     * {@code DirectoryV7.xml}。<b>老文件原样留着</b>，不改名也不删：它在用户的版本库里，
+     * 别的同事可能还在用旧版插件，删了对方就全丢了；留着的代价只是多一个文件。
+     * </p>
+     * <p>
+     * 也因此这件事只会发生一次——V7 一旦生成，下次开项目就直接走上面那条判据回来了。
+     * 用户要重新迁移，把 V7 删掉再开一次就行。
+     * </p>
+     * <p>
+     * 它要开写操作（{@code loadSaveFileXml} 落盘），别在写操作或 PSI 事件回调里调。
+     * </p>
+     *
+     * @param project 项目
+     * @return 真的生成了 V7 返回 true
+     */
+    public static boolean migrateIfNeeded(Project project) {
+        if (null != findConfigFile(project)) {
+            return false;
         }
-        return lfs.refreshAndFindFileByIoFile(
-                new File(project.getBasePath() + File.separator + LEGACY_XML_FILE_NAME));
+        final VirtualFile legacy = findLegacyFile(project);
+        if (null == legacy) {
+            return false;
+        }
+        final XmlFile legacyPsi = findXmlPsi(project, legacy);
+        if (null == legacyPsi) {
+            return false;
+        }
+        //读老文件要读锁：PSI 的属性访问在新版平台上不再由 EDT 隐式持有
+        final List<XmlEntity>[] holder = new List[1];
+        ApplicationManager.getApplication().runReadAction(() -> {
+            holder[0] = LegacyReader.read(legacyPsi);
+        });
+        final List<XmlEntity> entities = null == holder[0] ? new ArrayList<>() : holder[0];
+        final String text = V7Migrator.buildDocument(entities, XML_HEADER, XML_FOOTER);
+        if (null == loadSaveFileXml(project, text, XMLFileName)) {
+            return false;
+        }
+        notifyMigrated(project, legacy.getName(), entities.size());
+        return true;
     }
 
     /**
-     * 这个项目当前在用哪个配置文件名
+     * 迁移之后发一条通知
      *
      * <p>
-     * 给界面文案用。已经迁移过或者是新项目就是 V6，还没迁移的老项目还是 V3，
-     * 说明文字要跟着变，不然用户按提示去找文件会找不到。
+     * 用户项目根目录里凭空多出一个会进版本库的文件，不能一声不响：他下次提交会看到一个新增，
+     * 得知道是插件干的、为什么干的、老的那份还在不在。
      * </p>
-     *
-     * @param project 项目
-     * @return 文件名，一个都没有时给 V6
      */
-    public static String configFileName(Project project) {
-        final VirtualFile file = findConfigFile(project);
-        return null == file ? XMLFileName : file.getName();
-    }
-
-    /**
-     * 当前用的是不是老的 V3 文件名
-     *
-     * @param project 项目
-     * @return 只有在确实读到 V3 时才是 true
-     */
-    public static boolean isOnLegacyName(Project project) {
-        return LEGACY_XML_FILE_NAME.equals(configFileName(project));
-    }
-
-    /**
-     * 改名之后发一条通知
-     *
-     * <p>
-     * 动的是用户项目里会进版本库的文件，不能一声不响：他下次提交会看到一个删除加一个新增，
-     * 得知道是插件干的、为什么干的。
-     * </p>
-     *
-     * @param project 项目
-     * @param from    原文件名
-     * @param to      新文件名
-     */
-    public static void notifyRenamed(Project project, String from, String to) {
+    private static void notifyMigrated(Project project, String from, int count) {
         final NotificationGroupManager manager = NotificationGroupManager.getInstance();
         if (!manager.isGroupRegistered(NOTIFICATION_GROUP)) {
             return;
         }
-        final String why = XMLFileName.equals(to)
-                ? "抽离过路径前缀的文件旧版插件读不了（它不认 prefix 属性），换个名字新旧两版就各读各的。"
-                : "文件里已经没有 prefix 了，改回旧名字旧版插件就能重新读到它。";
         manager.getNotificationGroup(NOTIFICATION_GROUP)
-                .createNotification("配置文件已改名",
-                        from + " 已经改名为 " + to + "，内容一个字没动。" + why,
+                .createNotification("配置已升级到 V7",
+                        "已按 " + from + " 里的 " + count + " 条规则生成 " + XMLFileName
+                                + "，改成了嵌套结构、属性名也换短了。"
+                                + from + " 原样留着没动，旧版插件仍然读它；确认没问题后可以自行删除。",
                         NotificationType.INFORMATION)
                 .notify(project);
-    }
-
-    /**
-     * 把配置文件改成另一个名字
-     *
-     * <p>
-     * 两个方向都走这里：抽离保存时 V3 → V6，还原时用户选了「换回 V3」就 V6 → V3。
-     * 目标名字已经存在就不动——那种情况用户自己清楚在做什么，插件不替他决定丢哪份。
-     * </p>
-     * <p>
-     * 它要开写操作，别在写操作或 PSI 事件回调里调。
-     * </p>
-     *
-     * @param project    项目
-     * @param targetName 目标文件名，只接受本类认识的那两个
-     * @return 真的改名了返回 true
-     */
-    public static boolean renameConfigFile(Project project, String targetName) {
-        if (project == null || project.getBasePath() == null) {
-            return false;
-        }
-        if (!XMLFileName.equals(targetName) && !LEGACY_XML_FILE_NAME.equals(targetName)) {
-            return false;
-        }
-        final String currentName = XMLFileName.equals(targetName) ? LEGACY_XML_FILE_NAME : XMLFileName;
-        final LocalFileSystem lfs = LocalFileSystem.getInstance();
-        //目标已经在了就不动，免得把用户的另一份覆盖掉
-        if (null != lfs.refreshAndFindFileByIoFile(new File(project.getBasePath() + File.separator + targetName))) {
-            return false;
-        }
-        final VirtualFile current = lfs.refreshAndFindFileByIoFile(
-                new File(project.getBasePath() + File.separator + currentName));
-        if (null == current) {
-            return false;
-        }
-        final boolean[] renamed = new boolean[1];
-        WriteCommandAction.runWriteCommandAction(project, () -> {
-            try {
-                current.rename(XmlFileUtils.class, targetName);
-                renamed[0] = true;
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        });
-        return renamed[0];
     }
 
     /**
@@ -433,8 +414,8 @@ public class XmlFileUtils {
      * 获取文件
      *
      * <p>
-     * 落盘用的是缓存里那个 PsiFile 自己的文件名，<b>不能</b>硬写 V6：项目还没迁移过来时
-     * 缓存里是 V3，硬写会凭空造出第二份配置，两边内容从此各走各的。
+     * 落盘用的是缓存里那个 PsiFile 自己的文件名，虽然 7.0.0 起缓存里一定是 V7，还是保留这个写法：
+     * 哪天再来一次大版本迁移，硬写文件名会凭空造出第二份配置，两边内容从此各走各的。
      * </p>
      *
      * @param project 项目
@@ -470,13 +451,16 @@ public class XmlFileUtils {
     /**
      * 是否为指定的文件
      *
-     * <p>老的 V3 也要认：还没迁移过来的项目读的就是它，改动同样要触发重新解析。</p>
+     * <p>
+     * <b>只认 V7</b>。老文件在迁移那一刻读完就退休了，之后用户再改它也不该触发重新解析——
+     * 那会把内存里的 V7 配置覆盖成老文件的内容，而下一次存盘又写回 V7，两份就对不上了。
+     * </p>
      *
      * @param name 名称
      * @return boolean
      */
     public static boolean isFileName(String name) {
-        return XMLFileName.equals(name) || LEGACY_XML_FILE_NAME.equals(name);
+        return XMLFileName.equals(name);
     }
 
 

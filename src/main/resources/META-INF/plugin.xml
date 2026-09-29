@@ -40,8 +40,8 @@
             <li>"File members" tab: the methods and properties of the file you are editing as a tree, each followed by its comment (JavaDoc / JSDoc / line comments) — any language with a structure view works: Java, Kotlin, TS / JS / TSX, Python, Go, and more</li>
             <li>"Directory notes" tab: every configured rule in one list — dead paths flagged red, never-matching duplicates greyed out, one-click cleanup for both, double-click to jump to the file or to the rule's line in the XML</li>
             <li>"Help" tab: what each context-menu item does, all XML attributes, and how match priority is resolved</li>
-            <li>Extract repeated path prefixes into a <tt>prefixes</tt> table so long directories are written once, restorable at any time</li>
-            <li>Everything lives in one <b>DirectoryV6.xml</b> in the project root: commit it to share with your team, delete it to reset, hand edits apply on save</li>
+            <li>Rules are stored as a nested tree, so a long shared directory is written once as a parent node</li>
+            <li>Everything lives in one <b>DirectoryV7.xml</b> in the project root: commit it to share with your team, delete it to reset, hand edits apply on save</li>
           </ul>
       </p>
       <p>
@@ -52,8 +52,8 @@
             <li>「文件成员」tab：把当前文件的方法和属性列成一棵树，每项后面跟它的注释（JavaDoc / JSDoc / 行注释）——凡是有结构视图的语言都支持：Java、Kotlin、TS / JS / TSX、Python、Go 等</li>
             <li>「目录备注」tab：全部规则集中在一个列表——失效路径标红、永不生效的重复规则标灰、一键清理，双击跳到对应文件或 XML 里那条规则所在的行</li>
             <li>「说明」tab：右键菜单每一项做什么、XML 全部参数怎么写、命中优先级怎么算</li>
-            <li>抽离路径前缀：重复的长目录提到 <tt>prefixes</tt> 里只写一遍，每条规则只留剩下那截，随时能还原回去</li>
-            <li>全部配置存在项目根目录的一个 <b>DirectoryV6.xml</b> 里：提交它就能同步给同事。删掉它就全部重置，手动改完保存即时生效</li>
+            <li>规则以嵌套树的形式存储：重复的长目录作为父节点只写一遍</li>
+            <li>全部配置存在项目根目录的一个 <b>DirectoryV7.xml</b> 里：提交它就能同步给同事。删掉它就全部重置，手动改完保存即时生效</li>
           </ul>
       </p>
       <br/>
@@ -83,6 +83,19 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+      <ul>
+        <p>7.0.0</p>
+        <li>配置文件升级为 <b>DirectoryV7.xml</b>，结构从平铺改成<b>嵌套树</b>：一个 &lt;node&gt; 可以套下一层 &lt;node&gt;，每层的 path 只写相对上一层的那一截，重复的长目录天生只写一遍——原来的「抽离路径前缀」机制因此去掉了
+        </li>
+        <li>属性名全部改短：title→note、presentableText→label、tooltipTitle→tooltip、textColor→color、backgroundColor→bg、strikethrough→strike</li>
+        <li>开项目时若只有旧的 DirectoryV6.xml / DirectoryV3.xml，会自动按它的内容生成一份 V7 并发通知；<b>旧文件原样保留、不改名也不删</b>，方便还在用旧版插件的同事，确认无误后可自行删除
+        </li>
+        <li>The config file is now <b>DirectoryV7.xml</b> with a <b>nested tree</b> structure: a &lt;node&gt; can contain child &lt;node&gt;s and each level's path is relative to its parent, so a long shared directory is written once (the old prefix-extraction feature is removed)
+        </li>
+        <li>Attributes renamed for brevity: title→note, presentableText→label, tooltipTitle→tooltip, textColor→color, backgroundColor→bg, strikethrough→strike</li>
+        <li>On open, an existing DirectoryV6.xml / DirectoryV3.xml is auto-converted into a new V7 file; the old file is kept untouched (not renamed, not deleted) for teammates still on the old plugin
+        </li>
+      </ul>
       <ul>
         <p>6.2.0</p>
         <li>「选择图标或颜色」弹窗的三项现在都能<b>清空</b>：图标选下拉框第一项「（不设置）」，文字颜色和背景色各自点旁边的「清除」。

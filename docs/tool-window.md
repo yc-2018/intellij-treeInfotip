@@ -9,12 +9,12 @@
 | tab | 面板类 | 内容 |
 |---|---|---|
 | 文件成员（默认选中） | `MemberTreeView.createPanel(project)` | 当前编辑文件的方法 / 属性树，每项后面跟注释 |
-| 目录备注 | `NoteTreeView.createPanel(project)` | `DirectoryV6.xml` 里的规则平铺一行一条 |
+| 目录备注 | `NoteTreeView.createPanel(project)` | `DirectoryV7.xml` 里的规则平铺一行一条 |
 | 说明 | `HelpView.createPanel(project)` | 一页 HTML：菜单怎么用、各个参数、命中优先级 |
 
 三个面板类都是**私有构造 + 静态 `createPanel`**（前两个 `extends Tree`，`HelpView` `extends JEditorPane`），自己套 `SimpleToolWindowPanel`（`setToolbar` + `setContent(new JBScrollPane(this))`）。`NoteTreeView` 5.5.0 起**不再是 `ToolWindowFactory`**，别再往它身上加 `createToolWindowContent`。三个 content 都 `setCloseable(false)`——关掉了没有入口再开。
 
-**「说明」tab 用 `JEditorPane` 装一页 HTML**，不拼 Swing 控件：要的就是现成的标题、列表和等宽字体排版。三条必须做的：kit 用 `new HTMLEditorKitBuilder().withWordWrapViewFactory().build()`（**建完别再调 `setContentType`**，那会把 kit 换回 Swing 自带的、丢掉平台样式表）；覆盖 `getScrollableTracksViewportWidth()` 返回 `true`，正文才按侧边栏实际宽度重排；`setOpaque(false)` 露出 viewport 底色，否则深色主题下是一块白。Swing 的 HTML 停在 3.2，**不要写表格**（参数名加说明在这个宽度排不开，列会被压成竖着一串字），用 `ul` / `ol` / `tt`；`pre` 例子每行压在 35 字符左右，因为横向滚动条是 `HORIZONTAL_SCROLLBAR_NEVER`、超出直接裁掉。正文分成 `intro()`、`menu()`、`tabs()`、`attributes()`、`priority()`、`example()` 几段拼，**菜单文字要和 `plugin.xml` 里 `TreeInfotip.MenuGroup` 的 `text=` 一致，参数列表要和 `XmlStorage` 的常量对得上**，改那两处时这里也要改。工具栏只有一个「打开 DirectoryV6.xml」：`XmlFileUtils.getXmlFile(project)` 拿缓存（可能为 `null`，那就 `Messages` 提示去右键菜单加第一条，**不顺手建空文件**），`getVirtualFile()` 包在 `runReadAction` 里，`new OpenFileDescriptor(project, file, 0).navigate(true)` 在读操作外面。
+**「说明」tab 用 `JEditorPane` 装一页 HTML**，不拼 Swing 控件：要的就是现成的标题、列表和等宽字体排版。三条必须做的：kit 用 `new HTMLEditorKitBuilder().withWordWrapViewFactory().build()`（**建完别再调 `setContentType`**，那会把 kit 换回 Swing 自带的、丢掉平台样式表）；覆盖 `getScrollableTracksViewportWidth()` 返回 `true`，正文才按侧边栏实际宽度重排；`setOpaque(false)` 露出 viewport 底色，否则深色主题下是一块白。Swing 的 HTML 停在 3.2，**不要写表格**（参数名加说明在这个宽度排不开，列会被压成竖着一串字），用 `ul` / `ol` / `tt`；`pre` 例子每行压在 35 字符左右，因为横向滚动条是 `HORIZONTAL_SCROLLBAR_NEVER`、超出直接裁掉。正文分成 `intro()`、`menu()`、`tabs()`、`attributes()`、`priority()`、`example()` 几段拼，**菜单文字要和 `plugin.xml` 里 `TreeInfotip.MenuGroup` 的 `text=` 一致，参数列表要和 `XmlStorage` 的常量对得上**，改那两处时这里也要改。工具栏只有一个「打开 DirectoryV7.xml」：`XmlFileUtils.getXmlFile(project)` 拿缓存（可能为 `null`，那就 `Messages` 提示去右键菜单加第一条，**不顺手建空文件**），`getVirtualFile()` 包在 `runReadAction` 里，`new OpenFileDescriptor(project, file, 0).navigate(true)` 在读操作外面。
 
 **「文件成员」不自己解析语法，借 IDE 的结构视图取节点**：`FileEditor.getStructureViewBuilder()` → 转 `TreeBasedStructureViewBuilder` → `createStructureViewModel(null)`（不传 `Editor`，不需要跟随光标）→ `getRoot()` → 递归 `TreeElement.getChildren()`。这么做 Java、TS / JS / TSX / JSX、Kotlin、Python、Go 全是白拿的，而且**不用在 `plugin.xml` 里加任何 `<depends>`**。三条硬约束：
 

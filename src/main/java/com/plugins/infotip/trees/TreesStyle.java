@@ -91,23 +91,23 @@ public class TreesStyle {
             presentation.setIcon(icon);
         }
         //设置锚定文本
-        presentation.setLocationString(xmlEntity.getTitle());
+        presentation.setLocationString(xmlEntity.getNote());
         //设置悬浮提示
-        if (isNotEmpty(xmlEntity.getTooltipTitle())) {
-            presentation.setTooltip(xmlEntity.getTooltipTitle());
+        if (isNotEmpty(xmlEntity.getTooltip())) {
+            presentation.setTooltip(xmlEntity.getTooltip());
         }
         //覆盖节点显示名,为空时沿用节点原本的名称
-        final boolean hasPresentableText = isNotEmpty(xmlEntity.getPresentableText());
-        final String displayName = hasPresentableText ? xmlEntity.getPresentableText() : name;
+        final boolean hasPresentableText = isNotEmpty(xmlEntity.getLabel());
+        final String displayName = hasPresentableText ? xmlEntity.getLabel() : name;
         if (hasPresentableText) {
             presentation.setPresentableText(displayName);
         }
-        final Color backgroundColor = ColorsUtils.toColor(xmlEntity.getBackgroundColor());
+        final Color backgroundColor = ColorsUtils.toColor(xmlEntity.getBg());
         //有 VCS 状态色的节点让状态色优先：fgColor 留 null，平台渲染时会把 forcedTextForeground
         //刷到这个片段上（见 hasVcsColor）。配置里的颜色不删也不改——文件回到「无改动」时它会自己回来。
         //图标、背景色、锚定文本都还在，所以让位的只是文字颜色这一条通道。
-        final Color textColor = hasVcsColor ? null : ColorsUtils.toColor(xmlEntity.getTextColor());
-        final boolean strikethrough = xmlEntity.isStrikethroughEnabled();
+        final Color textColor = hasVcsColor ? null : ColorsUtils.toColor(xmlEntity.getColor());
+        final boolean strikethrough = xmlEntity.isStrikeEnabled();
         if (null != textColor || strikethrough || hasPresentableText) {
             //设置文本颜色与删除线,两者互不依赖且可叠加:
             //只设颜色时用 PLAIN + textColor;只设删除线时用 STRIKEOUT + null(沿用主题前景色);

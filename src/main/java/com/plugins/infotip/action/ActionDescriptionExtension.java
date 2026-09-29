@@ -108,7 +108,7 @@ public class ActionDescriptionExtension extends AnAction {
             }
         }
         final String title = Messages.showInputDialog(project, "请输入备注内容，留空则不显示备注", "按扩展名设置",
-                Messages.getQuestionIcon(), null == exists ? "" : trimToEmpty(exists.getTitle()), null);
+                Messages.getQuestionIcon(), null == exists ? "" : trimToEmpty(exists.getNote()), null);
         if (null == title) {
             return;
         }
@@ -123,13 +123,13 @@ public class ActionDescriptionExtension extends AnAction {
         dialog.setModal(true);
         if (null != exists) {
             dialog.setIcons(exists.getIcon());
-            dialog.setTextColor(exists.getTextColor());
-            dialog.setBackgroundColor(exists.getBackgroundColor());
+            dialog.setTextColor(exists.getColor());
+            dialog.setBackgroundColor(exists.getBg());
         }
         dialog.setVisible(true);
 
         final XmlEntity rule = null == exists ? new XmlEntity().setPath(rulePath).setExtension(extension) : exists;
-        rule.setTitle(title).setIcon(dialog.getIcons()).setTextColor(dialog.getTextColor()).setBackgroundColor(dialog.getBackgroundColor());
+        rule.setNote(title).setIcon(dialog.getIcons()).setColor(dialog.getTextColor()).setBg(dialog.getBackgroundColor());
         if (null == exists) {
             XmlStorage.create(project, xmlFile, rule);
         } else {
