@@ -28,7 +28,7 @@ public class V7Migrator {
     /**
      * 缩进一层的宽度
      */
-    private static final String INDENT = "    ";
+    private static final String INDENT = "  ";
 
     private V7Migrator() {
     }

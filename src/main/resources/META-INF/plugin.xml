@@ -84,6 +84,11 @@
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
       <ul>
+        <p>7.0.1</p>
+        <li>迁移生成的 DirectoryV7.xml 缩进从 4 个空格改成 2 个空格，嵌套深了也不至于把行推得太靠右</li>
+        <li>The migrated DirectoryV7.xml now indents with 2 spaces instead of 4, so deeply nested nodes don't drift too far right</li>
+      </ul>
+      <ul>
         <p>7.0.0</p>
         <li>配置文件升级为 <b>DirectoryV7.xml</b>，结构从平铺改成<b>嵌套树</b>：一个 &lt;node&gt; 可以套下一层 &lt;node&gt;，每层的 path 只写相对上一层的那一截，重复的长目录天生只写一遍——原来的「抽离路径前缀」机制因此去掉了
         </li>
