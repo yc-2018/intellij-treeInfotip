@@ -84,6 +84,11 @@
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
       <ul>
+        <p>7.0.3</p>
+        <li>「目录备注」树工具栏加了一排数字 1-10：点几就把树展开到第几层，默认 3 层。没展开的照样能手动点开，失效节点无论层数都会展开露出来</li>
+        <li>The "Directory notes" tree toolbar now has a row of numbers 1-10: click one to expand the tree to that depth (default 3). Collapsed nodes can still be opened by hand, and dead nodes are always revealed regardless of depth</li>
+      </ul>
+      <ul>
         <p>7.0.2</p>
         <li>「目录备注」侧边栏从平铺列表改成<b>目录树</b>，结构和配置文件、项目树一致；单链目录会压平成一段。失效的规则留在原位标红、其祖先链自动展开，一眼能看到；纯目录容器双击跳到对应目录</li>
         <li>The "Directory notes" sidebar is now a <b>tree</b> mirroring the config/project structure; single-child directories are collapsed into one node. Dead-path rules stay in place, highlighted red with their ancestors auto-expanded; double-clicking a pure container jumps to that directory</li>

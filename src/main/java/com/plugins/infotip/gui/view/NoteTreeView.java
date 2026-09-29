@@ -32,13 +32,19 @@ import com.plugins.infotip.storage.XmlStorage;
 import com.plugins.infotip.trees.TreesUtils;
 import org.jetbrains.annotations.NotNull;
 
+import javax.swing.BoxLayout;
 import javax.swing.Icon;
 import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
 import javax.swing.JTree;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.TreePath;
 import java.awt.Component;
+import java.awt.Cursor;
+import java.awt.FlowLayout;
+import java.awt.Font;
 import java.awt.Rectangle;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -111,6 +117,31 @@ public class NoteTreeView extends Tree {
      */
     private final List<XmlEntity> shadowedEntities = new ArrayList<>();
 
+    /**
+     * 展开层数上限。再深在这个宽度的侧边栏里也看不清了
+     */
+    private static final int MAX_DEPTH = 10;
+
+    /**
+     * 打开时默认展开几层
+     */
+    private static final int DEFAULT_DEPTH = 3;
+
+    /**
+     * 当前选的展开层数，点上面那排数字改
+     */
+    private int currentDepth = DEFAULT_DEPTH;
+
+    /**
+     * 那排数字标签，选中的高亮。点几就把树展开到几层
+     */
+    private final List<JLabel> depthLabels = new ArrayList<>();
+
+    /**
+     * 本次 {@link #reload()} 里失效的那些树节点，用来把它们的祖先链展开，见 {@link #revealMissing}
+     */
+    private final List<MyTreeNode> missingNodes = new ArrayList<>();
+
     private NoteTreeView(@NotNull Project project) {
         super(new DefaultMutableTreeNode("备注列表"));
         this.project = project;
@@ -139,6 +170,9 @@ public class NoteTreeView extends Tree {
         return panel;
     }
 
+    /**
+     * 顶部控件：第一行是按钮工具栏，第二行是「展开」+ 一排可点的层数数字
+     */
     private JComponent createToolbar() {
         final DefaultActionGroup group = new DefaultActionGroup();
         group.add(new RefreshAction());
@@ -147,8 +181,93 @@ public class NoteTreeView extends Tree {
         final ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar(PLACE_TOOLBAR, group, true);
         //不设 targetComponent 平台会警告，action 的 update 也拿不到正确的 DataContext
         toolbar.setTargetComponent(this);
-        return toolbar.getComponent();
+
+        final JPanel box = new JPanel();
+        box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
+        box.add(toolbar.getComponent());
+        box.add(buildDepthRow());
+        return box;
     }
+
+    /**
+     * 「展开」+ 数字 1..10 的那一行
+     * <p>
+     * 用一排可点的数字而不是拉杆：树是<b>整棵建好</b>的，点数字只是把它展开到第几层，没展开的
+     * 手动还能再展开，不像「文件成员」那样按层数重建。数字排在一行里、放得下几个是几个，
+     * 最多到 {@link #MAX_DEPTH}。
+     * </p>
+     */
+    private JComponent buildDepthRow() {
+        final JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
+        row.add(new JLabel("展开"));
+        depthLabels.clear();
+        for (int i = 1; i <= MAX_DEPTH; i++) {
+            final int depth = i;
+            final JLabel label = new JLabel(String.valueOf(i));
+            label.setToolTipText("展开到第 " + i + " 层");
+            label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            label.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mousePressed(MouseEvent e) {
+                    currentDepth = depth;
+                    applyDepth();
+                    highlightDepth();
+                }
+            });
+            depthLabels.add(label);
+            row.add(label);
+        }
+        highlightDepth();
+        return row;
+    }
+
+    /**
+     * 当前层数那个数字加粗，其余正常
+     */
+    private void highlightDepth() {
+        for (int i = 0; i < depthLabels.size(); i++) {
+            final JLabel label = depthLabels.get(i);
+            final boolean selected = (i + 1) == currentDepth;
+            label.setFont(label.getFont().deriveFont(selected ? Font.BOLD : Font.PLAIN));
+            label.setForeground(selected ? JBColor.foreground() : JBColor.gray);
+        }
+    }
+
+    /**
+     * 把树展开到 {@link #currentDepth} 层：层数小于它的节点全展开、到了就收起，
+     * 失效节点的祖先链无论层数都展开（{@link #revealMissing}）
+     */
+    private void applyDepth() {
+        final DefaultMutableTreeNode root = (DefaultMutableTreeNode) getModel().getRoot();
+        setExpanded(new TreePath(root), root);
+        revealMissing();
+    }
+
+    /**
+     * 递归按层数展开 / 收起。根是第 0 层、不可见，它的孩子算第 1 层
+     */
+    private void setExpanded(TreePath path, DefaultMutableTreeNode node) {
+        if (node.getLevel() < currentDepth) {
+            expandPath(path);
+            for (int i = 0; i < node.getChildCount(); i++) {
+                final DefaultMutableTreeNode child = (DefaultMutableTreeNode) node.getChildAt(i);
+                setExpanded(path.pathByAddingChild(child), child);
+            }
+        } else if (node.getLevel() > 0) {
+            //根不可见也不能收，收了整棵树就没了
+            collapsePath(path);
+        }
+    }
+
+    /**
+     * 把本次失效的节点的祖先链展开，藏得再深也让它露出来
+     */
+    private void revealMissing() {
+        for (MyTreeNode node : missingNodes) {
+            makeVisible(new TreePath(node.getPath()));
+        }
+    }
+
 
     /**
      * 右键菜单：置顶 + 删除，整行都能点，不只是文字上
@@ -269,6 +388,7 @@ public class NoteTreeView extends Tree {
         root.removeAllChildren();
         missingEntities.clear();
         shadowedEntities.clear();
+        missingNodes.clear();
 
         final Seg segRoot = new Seg("");
         final List<XmlEntity> entities = XmlStorage.getXmlEntity(project);
@@ -288,21 +408,17 @@ public class NoteTreeView extends Tree {
             }
         }
 
-        final List<MyTreeNode> reveal = new ArrayList<>();
         for (Seg child : segRoot.children.values()) {
-            root.add(toNode(child, "", reveal));
+            root.add(toNode(child, "", missingNodes));
         }
         //只写 extension 的全项目类型规则挂在根 Seg 上，直接铺在最外层
         for (Rule rule : segRoot.rules) {
-            root.add(leaf(rule, reveal));
+            root.add(leaf(rule, missingNodes));
         }
         //reload 要放在加完子节点之后：root.add 不发 model 事件
         model.reload();
-        expandPath(new TreePath(root));
-        //把失效节点的祖先链展开，makeVisible 会一路展开父节点
-        for (MyTreeNode node : reveal) {
-            makeVisible(new TreePath(node.getPath()));
-        }
+        //展开到当前层数，并把失效节点的祖先链无条件展开
+        applyDepth();
     }
 
     /**
