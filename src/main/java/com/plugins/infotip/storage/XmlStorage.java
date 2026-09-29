@@ -36,8 +36,6 @@ public class XmlStorage {
 
     final static String PATH = "path";
 
-    final static String EXTENSION = "extension";
-
     /**
      * 备注文字。6.x 叫 {@code title}
      */
@@ -74,7 +72,7 @@ public class XmlStorage {
      * 除 {@code path} 之外的全部属性：{@code path} 是节点在树里的位置，其余才是「配了什么」。
      * 判断一个节点是不是纯容器、以及清空一条规则时都按这张表来，<b>新增可配置属性必须往这里加一项</b>
      */
-    final static String[] SETTING_ATTRIBUTES = {EXTENSION, NOTE, LABEL, TOOLTIP, ICON, COLOR, BG, STRIKE};
+    final static String[] SETTING_ATTRIBUTES = {NOTE, LABEL, TOOLTIP, ICON, COLOR, BG, STRIKE};
     //endregion
 
     private final static ConcurrentHashMap<Project, CopyOnWriteArrayList<XmlEntity>> XML_STORAGE_LIST = new ConcurrentHashMap<>();
@@ -130,7 +128,6 @@ public class XmlStorage {
     private static XmlEntity toEntity(XmlTag tag, String fullPath) {
         return new XmlEntity()
                 .setPath(fullPath)
-                .setExtension(value(tag, EXTENSION))
                 .setNote(value(tag, NOTE))
                 .setLabel(value(tag, LABEL))
                 .setTooltip(value(tag, TOOLTIP))
@@ -196,7 +193,6 @@ public class XmlStorage {
      * 写一条规则的全部属性
      */
     private static void writeSettings(XmlTag tag, XmlEntity entity) {
-        NodeWriter.setIfNotEmpty(tag, EXTENSION, entity.getExtension());
         NodeWriter.setIfNotEmpty(tag, NOTE, entity.getNote());
         NodeWriter.setIfNotEmpty(tag, LABEL, entity.getLabel());
         NodeWriter.setIfNotEmpty(tag, TOOLTIP, entity.getTooltip());
@@ -210,9 +206,8 @@ public class XmlStorage {
      * 新建一条规则
      *
      * <p>
-     * 沿着完整路径把缺的层一层层建出来，最后落在目标节点上。类型规则（带 {@code extension}）
-     * 另起一个不带 {@code path} 的子节点，不和目录自己的备注挤在同一个标签上，理由见
-     * {@link NodeWriter} 的类注释。
+     * 沿着完整路径把缺的层一层层建出来，规则就落在那个路径对应的节点上。根目录（{@code <trees>}
+     * 不是 {@code <node>}）挂不了属性，这种情况另起一个子节点。
      * </p>
      *
      * @param project   项目
@@ -226,12 +221,9 @@ public class XmlStorage {
         }
         WriteCommandAction.runWriteCommandAction(project, () -> {
             final XmlTag holder = NodeWriter.ensurePath(rootTag, xmlEntity.getPath());
-            //根目录上挂不了属性（<trees> 不是 node），类型规则也一律另起一个子节点
-            final boolean standalone = holder == rootTag
-                    || !isBlank(xmlEntity.getExtension())
-                    || !isBlank(holder.getAttributeValue(EXTENSION));
             final XmlTag target;
-            if (standalone) {
+            if (holder == rootTag) {
+                //路径为空、落到了根：<trees> 上挂不了属性，另起一个子节点
                 final XmlTag child = holder.createChildTag(NODE, holder.getNamespace(), null, false);
                 writeSettings(child, xmlEntity);
                 target = holder.addSubTag(child, false);
@@ -268,11 +260,10 @@ public class XmlStorage {
     }
 
     /**
-     * 按「完整路径 + 扩展名」删规则
+     * 按完整路径删规则
      *
      * <p>
-     * 类型规则的 path 可能为空，要连 extension 一起比，否则会误删同目录下的其他规则。
-     * 同键的规则可能不止一条（用户手改时复制粘贴出来的），一次全删掉。
+     * 同一条路径上的规则可能不止一条（用户手改时复制粘贴出来的），一次全删掉。
      * </p>
      */
     public static synchronized void remove(XmlFile xmlFile, Project project, XmlEntity xmlEntity) {
@@ -282,7 +273,6 @@ public class XmlStorage {
         final List<XmlEntity> targets = new ArrayList<>();
         for (XmlEntity candidate : flatten(xmlFile)) {
             if (NodePaths.trimTrailingSlash(xmlEntity.getPath()).equals(NodePaths.trimTrailingSlash(candidate.getPath()))
-                    && trimToEmpty(xmlEntity.getExtension()).equals(trimToEmpty(candidate.getExtension()))
                     && candidate.hasAnySetting()) {
                 targets.add(candidate);
             }
@@ -412,13 +402,5 @@ public class XmlStorage {
             }
         }
         return true;
-    }
-
-    private static String trimToEmpty(String value) {
-        return null == value ? "" : value.trim();
-    }
-
-    private static boolean isBlank(String value) {
-        return null == value || value.trim().isEmpty();
     }
 }

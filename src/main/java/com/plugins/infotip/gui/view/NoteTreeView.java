@@ -442,16 +442,10 @@ public class NoteTreeView extends Tree {
         }
         final String fullPath = NodePaths.join(parentPath, label);
 
-        //这一层的路径规则（第一条没有 extension 的）落在节点自己身上，其余的当子叶子
-        Rule own = null;
-        for (Rule rule : node.rules) {
-            if (isPathRule(rule.entity)) {
-                own = rule;
-                break;
-            }
-        }
+        //这一层的第一条规则落在节点自己身上，其余的（重复项）当子叶子
+        final Rule own = node.rules.isEmpty() ? null : node.rules.get(0);
         final MyTreeNode result = dirNode(label, fullPath, own, reveal);
-        //先铺类型规则和被盖住的重复路径规则（都不是这一层的主规则），再铺子目录
+        //被盖住的重复路径规则铺成子叶子，再铺子目录
         for (Rule rule : node.rules) {
             if (rule != own) {
                 result.add(leaf(rule, reveal));
@@ -466,7 +460,7 @@ public class NoteTreeView extends Tree {
     /**
      * 建目录 / 文件节点本体
      *
-     * @param own 这个路径自己的路径规则，纯容器传 {@code null}
+     * @param own 这个路径自己的规则，纯容器传 {@code null}
      */
     private MyTreeNode dirNode(String label, String fullPath, Rule own, List<MyTreeNode> reveal) {
         if (null == own) {
@@ -491,45 +485,29 @@ public class NoteTreeView extends Tree {
     }
 
     /**
-     * 建一条规则的叶子节点：类型规则（*.ext）和被盖住的重复路径规则都走这里
+     * 建一条规则的叶子节点：目前只有被前面同路径规则盖住的重复项、以及挂在根上的空路径规则会走这里
      */
     private MyTreeNode leaf(Rule rule, List<MyTreeNode> reveal) {
         final XmlEntity entity = rule.entity;
-        final boolean typeRule = !trimmed(entity.getExtension()).isEmpty();
         final String scope = trimmed(entity.getPath());
         final String text = firstNonEmpty(trimmed(entity.getNote()), trimmed(entity.getLabel()), "");
-        final String display;
-        if (typeRule) {
-            final String suffix = "*." + trimmed(entity.getExtension()) + " @ " + (scope.isEmpty() ? "整个项目" : scope);
-            display = text.isEmpty() ? suffix : text + "  [" + suffix + "]";
-        } else {
-            //被盖住的重复路径规则，没写文字就拿路径兜底
-            display = text.isEmpty() ? scope : text;
-        }
+        //没写文字就拿路径兜底，空路径（根规则）显示成「/」
+        final String display = !text.isEmpty() ? text : (scope.isEmpty() ? "/" : scope);
         final MyTreeNode result = new MyTreeNode(display).setUserEntity(entity)
                 .setFullPath(scope).setShadowed(rule.shadowed);
-        //只写 extension 的全项目规则没有路径可查，永远算有效
-        final boolean projectWide = typeRule && scope.isEmpty();
-        final VirtualFile file = projectWide ? null : TreesUtils.findProjectFile(project, entity.getPath());
-        if (!projectWide && null == file) {
+        //空路径的根规则本来就匹配不到具体文件，不算失效
+        final VirtualFile file = scope.isEmpty() ? null : TreesUtils.findProjectFile(project, entity.getPath());
+        if (!scope.isEmpty() && null == file) {
             result.setMissing(true).setIcon(fit(AllIcons.General.Error));
             missingEntities.add(entity);
             reveal.add(result);
             return result;
         }
-        if (typeRule) {
-            return result.setIcon(extensionIcon(entity.getExtension()));
-        }
-        //重复的路径规则，图标按它指向的目录 / 文件给
         if (null != file && file.isDirectory()) {
             return result.setIcon(fit(AllIcons.Nodes.Folder));
         }
-        return result.setIcon(null == file ? fit(AllIcons.General.Error)
+        return result.setIcon(null == file ? fit(AllIcons.Nodes.Folder)
                 : fit(FileTypeManager.getInstance().getFileTypeByFileName(file.getName()).getIcon()));
-    }
-
-    private static boolean isPathRule(XmlEntity entity) {
-        return trimmed(entity.getExtension()).isEmpty();
     }
 
     private static String firstNonEmpty(String... values) {
@@ -551,7 +529,7 @@ public class NoteTreeView extends Tree {
         private final java.util.LinkedHashMap<String, Seg> children = new java.util.LinkedHashMap<>();
 
         /**
-         * 完整路径正好等于这个 Seg 的规则，可能不止一条（路径规则 + 限定此目录的类型规则 + 重复项）
+         * 完整路径正好等于这个 Seg 的规则，通常一条；手改配置复制粘贴出重复项时会有多条
          */
         private final List<Rule> rules = new ArrayList<>();
 
@@ -680,13 +658,6 @@ public class NoteTreeView extends Tree {
         if (null != file[0]) {
             new OpenFileDescriptor(project, file[0], offset[0]).navigate(true);
         }
-    }
-
-    /**
-     * 扩展名对应的文件类型图标，认不出来的扩展名会落到 UnknownFileType 的图标
-     */
-    private static Icon extensionIcon(String extension) {
-        return fit(FileTypeManager.getInstance().getFileTypeByExtension(extension.trim()).getIcon());
     }
 
     /**

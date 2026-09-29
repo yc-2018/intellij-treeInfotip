@@ -36,7 +36,6 @@
           <ul>
             <h3>English:</h3>
             <li>Right-click any file or folder in the project view: append a text note, override the display name, set a hover tooltip, change text/background color, pick any built-in IDE icon, or add a strikethrough</li>
-            <li>Batch rules by file extension, scoped to the current directory (subdirectories included) or the whole project</li>
             <li>"File members" tab: the methods and properties of the file you are editing as a tree, each followed by its comment (JavaDoc / JSDoc / line comments) — any language with a structure view works: Java, Kotlin, TS / JS / TSX, Python, Go, and more</li>
             <li>"Directory notes" tab: every configured rule in one list — dead paths flagged red, never-matching duplicates greyed out, one-click cleanup for both, double-click to jump to the file or to the rule's line in the XML</li>
             <li>"Help" tab: what each context-menu item does, all XML attributes, and how match priority is resolved</li>
@@ -48,7 +47,6 @@
           <ul>
             <h3>中文：</h3>
             <li>项目树右键文件或目录：添加文字备注、覆盖显示名称、设置悬浮提示、改文字色和背景色、换成 IDE 内置的任意图标、加删除线</li>
-            <li>按扩展名批量设置：一条规则命中一批同扩展名的文件，范围可限定为当前目录（含子目录）或整个项目</li>
             <li>「文件成员」tab：把当前文件的方法和属性列成一棵树，每项后面跟它的注释（JavaDoc / JSDoc / 行注释）——凡是有结构视图的语言都支持：Java、Kotlin、TS / JS / TSX、Python、Go 等</li>
             <li>「目录备注」tab：全部规则集中在一个列表——失效路径标红、永不生效的重复规则标灰、一键清理，双击跳到对应文件或 XML 里那条规则所在的行</li>
             <li>「说明」tab：右键菜单每一项做什么、XML 全部参数怎么写、命中优先级怎么算</li>
@@ -83,6 +81,11 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+      <ul>
+        <p>7.1.0</p>
+        <li>去掉了 <tt>extension</tt> 属性和「按扩展名批量设置」菜单：一条规则只对应一个路径。命中规则简化为「完整路径全等」一种，不再有目录级 / 全项目的类型规则。老配置里带 extension 的规则在迁移时会被丢弃</li>
+        <li>Removed the <tt>extension</tt> attribute and the "batch by extension" menu: a rule now maps to a single path. Matching is simplified to exact full-path equality; extension-based rules in old configs are dropped on migration</li>
+      </ul>
       <ul>
         <p>7.0.3</p>
         <li>「目录备注」树工具栏加了一排数字 1-10：点几就把树展开到第几层，默认 3 层。没展开的照样能手动点开，失效节点无论层数都会展开露出来</li>
@@ -407,10 +410,6 @@
             <action id="TreeInfotip.Strikethrough" class="com.plugins.infotip.action.ActionDescriptionStrikethrough"
                     text="添加/取消删除线"
                     description="给选中的文件或目录名称添加或取消删除线"/>
-            <separator/>
-            <action id="TreeInfotip.Extension" class="com.plugins.infotip.action.ActionDescriptionExtension"
-                    text="按扩展名批量设置"
-                    description="一条规则命中一批同扩展名的文件,范围可限定为当前目录或整个项目"/>
             <separator/>
             <action id="TreeInfotip.ClearAll" class="com.plugins.infotip.action.ActionDescriptionClearAll"
                     text="清除全部设置"

@@ -27,11 +27,6 @@ public class XmlEntity {
     private String path;
 
     /**
-     * 后缀，不带点。只作用于文件，目录节点不参与匹配
-     */
-    private String extension;
-
-    /**
      * 备注文字，灰色跟在节点名后面（6.x 叫 title）
      */
     private String note;
@@ -89,12 +84,12 @@ public class XmlEntity {
      * 容器和同路径的真规则判成重复，真规则被标灰说成「不生效」。
      * </p>
      *
-     * @return 配了至少一个样式属性、或者是一条类型规则时为 true
+     * @return 配了至少一个样式属性时为 true
      */
     public boolean hasAnySetting() {
         return isNotBlank(note) || isNotBlank(label) || isNotBlank(tooltip)
                 || isNotBlank(icon) || isNotBlank(color) || isNotBlank(bg)
-                || isStrikeEnabled() || isNotBlank(extension);
+                || isStrikeEnabled();
     }
 
     private static boolean isNotBlank(String value) {

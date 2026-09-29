@@ -149,7 +149,7 @@ public class XmlFileUtils {
                             for (Pair<String, String> pair : pathInfo) {
                                 boolean find = false;
                                 for (XmlEntity x : xmlEntitys) {
-                                    if (isPathRule(x) && pair.getValue0().equals(x.getPath())) {
+                                    if (pair.getValue0().equals(x.getPath())) {
                                         find = true;
                                         newXmlEntity.add(x);
                                     }
@@ -170,18 +170,6 @@ public class XmlFileUtils {
 
     public static void ListenerSave(Object id, SaveCallback callback) {
         callbackList.put(id, callback);
-    }
-
-    /**
-     * 是否为「路径规则」，即只绑定单个文件或目录的那种。
-     * <p>
-     * 带 extension 的是「类型规则」，一条会命中一批同扩展名的文件。针对单个节点的菜单
-     * 不能顺手把它改掉，否则改一个文件的备注会连带影响整批文件，所以匹配时要排除。
-     * </p>
-     */
-    private static boolean isPathRule(XmlEntity xmlEntity) {
-        final String extension = xmlEntity.getExtension();
-        return null == extension || extension.trim().isEmpty();
     }
 
     /**
@@ -212,25 +200,23 @@ public class XmlFileUtils {
       "    <trees>",
       "      <node path=\"src/main/java\">",
       "        <node path=\"Foo.java\" note=\"入口\"/>",
-      "        <node extension=\"java\" color=\"255,0,0\"/>",
+      "        <node path=\"App.java\" color=\"255,0,0\"/>",
       "      </node>",
       "    </trees>",
       "",
       "  只为了分层而存在、自己什么都没配的节点不算规则，删光底下的规则时会跟着消失。",
       "",
       "  参数全是可选的，按需要写几个：",
-      "    path       相对上一层的路径；写在最外层就是相对项目根目录",
-      "    extension  扩展名，不带点，只作用于文件；指所在目录连各级子目录下的这类文件",
-      "    note       备注文字，灰色跟在节点名后面",
-      "    label      覆盖节点显示的名字",
-      "    tooltip    鼠标悬浮时的提示，要换行写 &#10;",
-      "    icon       换图标，填 AllIcons 里的字段路径，例如 Nodes.Folder",
-      "    color      文字颜色，十进制 r,g,b，例如 255,0,0",
-      "    bg         背景色，写法同上",
-      "    strike     填 true 给节点加删除线",
+      "    path     相对上一层的路径；写在最外层就是相对项目根目录",
+      "    note     备注文字，灰色跟在节点名后面",
+      "    label    覆盖节点显示的名字",
+      "    tooltip  鼠标悬浮时的提示，要换行写 &#10;",
+      "    icon     换图标，填 AllIcons 里的字段路径，例如 Nodes.Folder",
+      "    color    文字颜色，十进制 r,g,b，例如 255,0,0",
+      "    bg       背景色，写法同上",
+      "    strike   填 true 给节点加删除线",
       "",
-      "  命中优先级：完整路径全等的最高，其次路径加 extension（路径更长的赢），",
-      "  最后是直接挂在 trees 下、只写 extension 的全项目规则。同优先级时写在前面的那条赢，",
+      "  一个 node 只对完整路径全等的那一个文件或目录生效。同一路径写了多条时写在前面的赢，",
       "  所以侧边栏「目录备注」里的「置顶」是真的把标签挪到同层兄弟的最前面。",
       "-->");
 

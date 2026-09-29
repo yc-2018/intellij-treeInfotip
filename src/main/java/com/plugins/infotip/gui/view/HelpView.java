@@ -161,7 +161,7 @@ public class HelpView extends JEditorPane {
     }
 
     /**
-     * 七项菜单文字要和 {@code plugin.xml} 里 {@code TreeInfotip.MenuGroup} 的 {@code text=} 一致，
+     * 六项菜单文字要和 {@code plugin.xml} 里 {@code TreeInfotip.MenuGroup} 的 {@code text=} 一致，
      * 改菜单文字时这里也要跟着改
      */
     private static String menu() {
@@ -174,8 +174,6 @@ public class HelpView extends JEditorPane {
                 + "<li><b>添加颜色或图标</b>：换图标、改文字颜色和背景色。"
                 + "三项都能清空：图标选下拉框第一项「（不设置）」，两个颜色各自点右边的「清除」</li>"
                 + "<li><b>添加/取消删除线</b>：给节点名加一道删除线，用来标记废弃的东西</li>"
-                + "<li><b>按扩展名批量设置</b>：一条规则管一批同扩展名的文件，"
-                + "范围可以限定在选中的目录，也可以是整个项目</li>"
                 + "<li><b>清除全部设置</b>：把选中节点的备注和样式全删掉</li>"
                 + "</ul>"
                 + "<p><b>文字颜色不会盖掉 Git 的状态色</b>：被改过（蓝）、已加（绿）、"
@@ -192,9 +190,9 @@ public class HelpView extends JEditorPane {
                 + "<b>单击</b>跳到定义处，<b>双击</b>收缩或展开。上面的「方法」「属性」勾选框控制显示哪一类，"
                 + "「层数」拉杆控制展开几层，最多 10 层。注释按四级找：文档注释、多行注释、"
                 + "行尾的单行注释、紧贴在上方的单行注释，命中一级就不再往下找。</li>"
-                + "<li><b>目录备注</b>：DirectoryV7.xml 里的规则一行一条。<b>双击</b>跳到对应的文件；"
-                + "路径已经不存在的<b>标红排在最前面</b>，双击跳到 XML 里那条规则所在的行；"
-                + "被前面同路径规则盖住、永远不生效的<b>标灰</b>。"
+                + "<li><b>目录备注</b>：DirectoryV7.xml 里的规则按目录层级组织成一棵树。<b>双击</b>跳到对应的文件；"
+                + "路径已经不存在的<b>标红</b>、其祖先链自动展开，双击跳到 XML 里那条规则所在的行；"
+                + "被前面同路径规则盖住、永远不生效的<b>标灰</b>。工具栏第二行的数字 1-10 点几就展开到第几层。"
                 + "右键有<b>置顶</b>和<b>删除</b>，都支持 Ctrl 多选；工具栏上还有「刷新」"
                 + "「清除失效路径」和「清理重复规则」。</li>"
                 + "<li><b>说明</b>：就是这一页。</li>"
@@ -202,7 +200,7 @@ public class HelpView extends JEditorPane {
     }
 
     /**
-     * 八个参数要和 {@link com.plugins.infotip.storage.XmlStorage} 里的常量对得上，
+     * 七个参数要和 {@link com.plugins.infotip.storage.XmlStorage} 里的常量对得上，
      * 新增可配置属性时这里也要补一条
      */
     private static String attributes() {
@@ -213,9 +211,6 @@ public class HelpView extends JEditorPane {
                 + "<ul>"
                 + "<li><tt>path</tt> — 相对上一层的路径，例如 <tt>src/main/java</tt>；"
                 + "写在最外层就是相对项目根目录。末尾多写的 / 会被忽略。</li>"
-                + "<li><tt>extension</tt> — 扩展名，<b>不带点</b>，例如 <tt>java</tt>。"
-                + "只作用于文件，目录节点不参与；指所在目录连各级子目录下的这类文件。"
-                + "直接挂在最外层、只写 <tt>extension</tt> 的对整个项目生效。</li>"
                 + "<li><tt>note</tt> — 备注文字，灰色跟在节点名后面。</li>"
                 + "<li><tt>label</tt> — 覆盖节点显示的名字。</li>"
                 + "<li><tt>tooltip</tt> — 鼠标悬浮时的提示，可以写多行。</li>"
@@ -229,17 +224,11 @@ public class HelpView extends JEditorPane {
 
     private static String priority() {
         return "<h4>命中优先级</h4>"
-                + "<p>同一个节点被多条规则命中时，从高到低：</p>"
-                + "<ol>"
-                + "<li><b>路径规则</b>（只写 <tt>path</tt>）：路径全等的那一个文件或目录</li>"
-                + "<li><b>目录级类型规则</b>（<tt>path</tt> 加 <tt>extension</tt>）：该目录及各级子目录下的"
-                + "这类文件，多条同时命中时 <b>path 更长的赢</b></li>"
-                + "<li><b>全项目类型规则</b>（只写 <tt>extension</tt>）：整个项目的这类文件，只做兜底</li>"
-                + "</ol>"
-                + "<p>同优先级时<b>写在前面的那条赢</b>，所以「目录备注」里的「置顶」不是列表排序，"
-                + "是真的把这条标签挪到文件最前面。</p>"
-                + "<p>也因此，<tt>path</tt> 和 <tt>extension</tt> 都一样的<b>第二条规则完全没用</b>——"
-                + "不是「部分生效」，哪怕它多配了前面那条没有的参数也读不到。这种规则在「目录备注」里"
+                + "<p>一个 &lt;node&gt; 只对<b>完整路径全等</b>的那一个文件或目录生效。"
+                + "同一路径写了多条时，写在前面的那条赢——所以「目录备注」里的「置顶」不是列表排序，"
+                + "是真的把这条标签挪到同层兄弟的最前面。</p>"
+                + "<p>也因此，<tt>path</tt> 一样的<b>第二条规则完全没用</b>——不是「部分生效」，"
+                + "哪怕它多配了前面那条没有的参数也读不到。这种规则在「目录备注」里"
                 + "标灰，用工具栏的「清理重复规则」一键删掉，在生效的那条会保留。</p>";
     }
 
@@ -253,7 +242,7 @@ public class HelpView extends JEditorPane {
                 + "  &lt;node path=\"src\" note=\"源码\"&gt;\n"
                 + "    &lt;node path=\"old\"\n"
                 + "          strike=\"true\"/&gt;\n"
-                + "    &lt;node extension=\"ts\"\n"
+                + "    &lt;node path=\"App.java\"\n"
                 + "          color=\"255,0,0\"/&gt;\n"
                 + "  &lt;/node&gt;\n"
                 + "&lt;/trees&gt;"

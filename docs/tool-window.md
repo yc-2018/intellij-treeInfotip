@@ -9,7 +9,7 @@
 | tab | 面板类 | 内容 |
 |---|---|---|
 | 文件成员（默认选中） | `MemberTreeView.createPanel(project)` | 当前编辑文件的方法 / 属性树，每项后面跟注释 |
-| 目录备注 | `NoteTreeView.createPanel(project)` | `DirectoryV7.xml` 里的规则平铺一行一条 |
+| 目录备注 | `NoteTreeView.createPanel(project)` | `DirectoryV7.xml` 里的规则按目录层级组织成一棵树（7.0.2 起），工具栏第二行数字 1-10 控制展开层数 |
 | 说明 | `HelpView.createPanel(project)` | 一页 HTML：菜单怎么用、各个参数、命中优先级 |
 
 三个面板类都是**私有构造 + 静态 `createPanel`**（前两个 `extends Tree`，`HelpView` `extends JEditorPane`），自己套 `SimpleToolWindowPanel`（`setToolbar` + `setContent(new JBScrollPane(this))`）。`NoteTreeView` 5.5.0 起**不再是 `ToolWindowFactory`**，别再往它身上加 `createToolWindowContent`。三个 content 都 `setCloseable(false)`——关掉了没有入口再开。

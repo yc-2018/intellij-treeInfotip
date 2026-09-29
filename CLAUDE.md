@@ -72,35 +72,23 @@ PresentationData：图标 / locationString(note) / tooltip / presentableText(lab
 
 ### 匹配优先级（`TreesUtils.getMatchPath`）
 
-内存里的 `XmlEntity.path` 一律是**完整路径**，所以匹配逻辑完全不知道嵌套这回事，和平铺时代一个字没改。一条规则有两种形态，命中优先级从高到低：
+内存里的 `XmlEntity.path` 一律是**完整路径**，所以匹配逻辑完全不知道嵌套这回事。7.1.0 去掉 `extension` 后只剩一种规则：**完整路径全等**即命中。同一路径写了多条时，列表里靠前的赢（列表就是文件里的先后顺序）。路径末尾多写的 `/` 由 `trimTrailingSlash` 归一化。
 
-| 规则 | 完整路径形态 | 命中范围 |
-|---|---|---|
-| 路径规则 | path=`/a/B.java`，无 extension | 路径全等的那一个文件或目录，优先级最高 |
-| 目录级类型规则 | path=`/src/main/java` + extension=`java` | 该目录及各级子目录下的 `.java`；多条同时命中时 `path` 更长的赢 |
-| 全项目类型规则 | 只有 extension=`java`（挂在 `<trees>` 直下） | 整个项目的 `.java`，只做兜底 |
-
-扩展名规则只作用于文件，目录节点不参与。路径末尾多写的 `/` 由 `trimTrailingSlash` 归一化。
-
-**嵌套不改变命中结果**：只有完整路径相同的规则才互相竞争（同优先级先到先得），而它们归堆后都落在同一个父 `<node>` 下、相对顺序原样保留。所以「置顶」只需挪到**同层兄弟**的最前面，不用像平铺时代挪到整个文件头部。
+**嵌套不改变命中结果**：只有完整路径相同的规则才互相竞争，而它们归堆后都落在同一个父 `<node>` 下、相对顺序原样保留。所以「置顶」只需挪到**同层兄弟**的最前面，不用像平铺时代挪到整个文件头部。
 
 ### 右键菜单
 
 菜单类都在 `action/` 下，注册在 `plugin.xml` 的 `TreeInfotip.MenuGroup` 里，挂到 `ProjectViewPopupMenu`。
 
-针对单个节点的菜单统一用 `XmlFileUtils.runActionType(event, callback)` 模板：它把选中节点转成相对路径，查缓存决定走 `onModifyPath`（已有配置）还是 `onCreatePath`（还没有）。`ActionDescriptionText` 是最标准的例子，加新菜单直接照抄。
-
-**`runActionType` 只匹配路径规则**（见 `isPathRule`）。带 `extension` 的类型规则一条管一批文件，不能被单节点菜单顺手改掉，所以 `ActionDescriptionExtension` 不走这个模板，自己读 `VIRTUAL_FILE_ARRAY`；也因此**类型规则的删除入口只在它自己内部**——「清除全部设置」是按路径匹配的，碰不到类型规则。
+针对单个节点的菜单统一用 `XmlFileUtils.runActionType(event, callback)` 模板：它把选中节点转成相对路径，查缓存决定走 `onModifyPath`（已有配置）还是 `onCreatePath`（还没有）。`ActionDescriptionText` 是最标准的例子，加新菜单直接照抄。所有菜单都走这个模板（7.1.0 去掉 `extension` 后，唯一的例外 `ActionDescriptionExtension` 也删了）。
 
 ### 写 XML
 
-节点定位、新建、拆分、清理空壳全在 `NodeWriter`；`XmlStorage` 的 `create/modify/remove/moveToTop` 调它。属性写入走 `NodeWriter.setIfNotEmpty`：值为空就把已存在的属性删掉（`XmlTag.setAttribute(name, null)` 是删除语义）。`XmlStorage.parsing` 解析时会把缺失属性归一成 `""`，直接回写就会在文件里堆出 `extension="" icon=""` 这类噪音，所以不要绕过这个方法。
+节点定位、新建、拆分、清理空壳全在 `NodeWriter`；`XmlStorage` 的 `create/modify/remove/moveToTop` 调它。属性写入走 `NodeWriter.setIfNotEmpty`：值为空就把已存在的属性删掉（`XmlTag.setAttribute(name, null)` 是删除语义）。`XmlStorage.parsing` 解析时会把缺失属性归一成 `""`，直接回写就会在文件里堆出 `icon="" color=""` 这类噪音，所以不要绕过这个方法。
 
-两条嵌套特有的不变量：**带 `extension` 的类型规则一律写成不带 `path` 的独立子节点**，不往目录节点自己身上挂（`/src` 的目录备注和「/src 下的 *.java」是两条互不相干的规则，挤在一个标签上会互相牵连）；**只有 `path` 的纯容器节点**删光底下规则后要跟着消失（`NodeWriter.deleteRule` → `prune` 自下而上清空壳）。
+一条嵌套特有的不变量：**只有 `path` 的纯容器节点**删光底下规则后要跟着消失（`NodeWriter.deleteRule` → `prune` 自下而上清空壳）。
 
-新增一个可配置属性要同时改这些地方：`XmlEntity` 加字段、`XmlStorage` 加常量并补进 `SETTING_ATTRIBUTES`、`toEntity()` / `writeSettings()` 两处登记、`V7Migrator.attributes()` 和 `LegacyReader.tree()`（老属性名映射）各补一条、`TreesStyle.setStyle` 应用到 `PresentationData`、加对应 action 并在 `plugin.xml` 注册。**还有说明文档**：`XmlFileUtils.XML_FOOTER` 的注释和 `HelpView.attributes()` 的参数列表都要补一条。
-
-新项目第一次加备注时由 `XmlFileUtils.createXmlFile` 写出 `XML_TEMPLATE`（`XML_HEADER` + 空 `<trees>` + `XML_FOOTER`），footer 那段注释列全参数、嵌套写法和命中优先级——这文件躺在项目根目录，用户迟早点开它。**XML 注释里不能出现连续两个减号**这条约束仍然有效。
+新增一个可配置属性要同时改这些地方：`XmlEntity` 加字段、`XmlStorage` 加常量并补进 `SETTING_ATTRIBUTES`、`toEntity()` / `writeSettings()` 两处登记、`V7Migrator.attributes()` 和 `LegacyReader.tree()`（老属性名映射）各补一条、`TreesStyle.setStyle` 应用到 `PresentationData`、加对应 action 并在 `plugin.xml` 注册。**还有说明文档**：`XmlFileUtils.XML_FOOTER` 的注释和 `HelpView.attributes()` 的参数列表都要补一条。新项目第一次加备注时由 `XmlFileUtils.createXmlFile` 写出 `XML_TEMPLATE`（`XML_HEADER` + 空 `<trees>` + `XML_FOOTER`），footer 那段注释列全参数、嵌套写法和命中优先级——这文件躺在项目根目录，用户迟早点开它。**XML 注释里不能出现连续两个减号**这条约束仍然有效。
 
 ### 回调注册表
 

@@ -17,10 +17,9 @@ import java.util.Map;
  * <h3>为什么重排之后命中结果不变</h3>
  * <p>
  * 嵌套是按路径归堆，文件里的先后顺序整个被打乱了，而 {@code TreesUtils.getMatchPath} 里
- * 「同优先级先到先得」是认顺序的。之所以还是安全的，是因为<b>只有路径相同的规则才会互相竞争</b>：
- * 路径规则要全等才命中，目录级类型规则比的是 path 长度（长的赢，一样长才看顺序），
- * 全项目类型规则彼此都挂在根上。这三种竞争关系里，参与竞争的规则<b>归堆之后都落在同一个节点里</b>，
- * 而同一个节点里的相对顺序这里是原样保留的。跨路径的规则本来就不靠顺序分胜负。
+ * 「同路径先到先得」是认顺序的。之所以还是安全的，是因为<b>只有完整路径相同的规则才会互相竞争</b>
+ * （全等才命中），而它们归堆之后都落在同一个节点里，同一个节点里的相对顺序这里原样保留。
+ * 跨路径的规则本来就不靠顺序分胜负。
  * </p>
  */
 public class V7Migrator {
@@ -55,8 +54,7 @@ public class V7Migrator {
         }
         final List<String> lines = new ArrayList<>();
         lines.add("<trees>");
-        //根节点自己的规则：只写 extension 的全项目类型规则都在这里。它们没有 path，
-        //挂在 <trees> 下面就等于「整个项目」，和老格式里不写 path 是一个意思
+        //根节点自己的规则：路径为空（写成 path="/" 或省略）的规则挂在这里，直接铺在 <trees> 下
         for (XmlEntity rule : root.rules) {
             lines.add(INDENT + selfClosing(rule, null));
         }
@@ -84,9 +82,9 @@ public class V7Migrator {
                 segment = segment + "/" + only.segment;
                 node = only;
             }
-            //这一层的路径规则（没有 extension 的那条）直接写在节点自己身上，
-            //剩下的同路径规则作为不带 path 的子节点跟在后面，相对顺序保持不变
-            final XmlEntity own = takeFirstPathRule(node.rules);
+            //这一层的第一条规则直接写在节点自己身上，剩下的同路径规则（重复项）
+            //作为不带 path 的子节点跟在后面，相对顺序保持不变
+            final XmlEntity own = node.rules.isEmpty() ? null : node.rules.get(0);
             final List<XmlEntity> rest = new ArrayList<>(node.rules);
             rest.remove(own);
             if (rest.isEmpty() && node.children.isEmpty()) {
@@ -100,20 +98,6 @@ public class V7Migrator {
             renderChildren(lines, node, depth + 1);
             lines.add(indent + "</" + XmlStorage.NODE + ">");
         }
-    }
-
-    /**
-     * 挑出这一堆同路径规则里的第一条「路径规则」
-     *
-     * @return 全是类型规则时返回 null，那时节点只写 path
-     */
-    private static XmlEntity takeFirstPathRule(List<XmlEntity> rules) {
-        for (XmlEntity rule : rules) {
-            if (isBlank(rule.getExtension())) {
-                return rule;
-            }
-        }
-        return null;
     }
 
     private static String selfClosing(XmlEntity rule, String segment) {
@@ -134,7 +118,6 @@ public class V7Migrator {
         final StringBuilder sb = new StringBuilder();
         append(sb, XmlStorage.PATH, segment);
         if (null != rule) {
-            append(sb, XmlStorage.EXTENSION, rule.getExtension());
             append(sb, XmlStorage.NOTE, rule.getNote());
             append(sb, XmlStorage.LABEL, rule.getLabel());
             append(sb, XmlStorage.TOOLTIP, rule.getTooltip());

@@ -125,20 +125,28 @@ public class LegacyReader {
     /**
      * 解析一条 {@code <tree>}
      *
-     * @return 既没有 path、也没有 extension、也没引用前缀的标签返回 null
+     * <p>
+     * 带 {@code extension} 的老「类型规则」<b>直接丢弃</b>：7.1.0 去掉了 extension 这个属性，
+     * 一条规则只对应一个路径，类型规则没有对等的迁法。没有 path、只有 extension 的那些迁过来
+     * 也不会命中任何东西，丢掉最干净。
+     * </p>
+     *
+     * @return 没有可迁内容、或本就是类型规则的返回 null
      */
     private static XmlEntity tree(XmlTag tag, Map<String, String> prefixes) {
         final String rawPath = tag.getAttributeValue(PATH);
         final String extension = tag.getAttributeValue(EXTENSION);
         final String prefixRef = tag.getAttributeValue(PREFIX);
-        //只写 extension 的是「全项目按类型」规则，没有 path 也算有效；
-        //引用了前缀的即使 path 为空也算（那是前缀目录本身那一条）
-        if (null == rawPath && null == extension && null == prefixRef) {
+        //类型规则（带 extension）不再支持，跳过
+        if (null != extension && !extension.trim().isEmpty()) {
+            return null;
+        }
+        //没有任何路径信息的标签也没法迁
+        if (null == rawPath && null == prefixRef) {
             return null;
         }
         return new XmlEntity()
                 .setPath(expandPath(prefixRef, rawPath, prefixes))
-                .setExtension(extension)
                 .setNote(tag.getAttributeValue(TITLE))
                 .setLabel(tag.getAttributeValue(PRESENTABLE_TEXT))
                 .setTooltip(tag.getAttributeValue(TOOLTIP_TITLE))
