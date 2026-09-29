@@ -84,6 +84,11 @@
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
       <ul>
+        <p>7.0.2</p>
+        <li>「目录备注」侧边栏从平铺列表改成<b>目录树</b>，结构和配置文件、项目树一致；单链目录会压平成一段。失效的规则留在原位标红、其祖先链自动展开，一眼能看到；纯目录容器双击跳到对应目录</li>
+        <li>The "Directory notes" sidebar is now a <b>tree</b> mirroring the config/project structure; single-child directories are collapsed into one node. Dead-path rules stay in place, highlighted red with their ancestors auto-expanded; double-clicking a pure container jumps to that directory</li>
+      </ul>
+      <ul>
         <p>7.0.1</p>
         <li>迁移生成的 DirectoryV7.xml 缩进从 4 个空格改成 2 个空格，嵌套深了也不至于把行推得太靠右</li>
         <li>The migrated DirectoryV7.xml now indents with 2 spaces instead of 4, so deeply nested nodes don't drift too far right</li>

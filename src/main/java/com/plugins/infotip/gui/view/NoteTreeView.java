@@ -25,6 +25,7 @@ import com.intellij.ui.treeStructure.Tree;
 import com.plugins.infotip.PluginStartupActivity;
 import com.plugins.infotip.gui.IconsUtils;
 import com.plugins.infotip.gui.compone.MyTreeNode;
+import com.plugins.infotip.storage.NodePaths;
 import com.plugins.infotip.storage.XmlEntity;
 import com.plugins.infotip.storage.XmlFileUtils;
 import com.plugins.infotip.storage.XmlStorage;
@@ -49,16 +50,27 @@ import java.util.Set;
 /**
  * A <code>NoteTreeView</code> Class
  * <p>
- * 「目录备注」列表：{@code DirectoryV7.xml} 里配的规则平铺一行一条。
+ * 「目录备注」列表：{@code DirectoryV7.xml} 里配的规则按目录层级组织成一棵树（7.0.2 起）。
  * </p>
  * <p>
- * 是平铺而不是真实的目录树——规则是稀疏的，一条 {@code /src/main/java/a/b/C.java} 在树里要
- * 建五层空目录才够挂上它，翻起来比一行一条还慢。既然不做树，5.4.1 之前那个「备注列表（双击刷新）」
- * 的根节点也就没用了：刷新挪到了工具栏上，列表直接从第一行开始。
+ * 7.0.2 之前是平铺一行一条。当初不做树是因为规则稀疏，一条 {@code /src/main/java/a/b/C.java}
+ * 在树里要建五层空目录才挂得上。7.0.0 配置本身改成嵌套后这个顾虑没了：单链目录会压平成一段
+ * （{@code src/main/java} 一个节点而非三层），树的结构和配置文件、项目树都对得上。
+ * 5.4.1 之前「备注列表（双击刷新）」的根节点仍不显示，刷新在工具栏上。
  * </p>
  * <p>
- * 路径已失效的规则排在最前面。项目树上已经没有它们的节点了，这个列表是用户唯一能发现并清掉
- * 它们的地方，所以还给了工具栏上的「清除失效路径」一键删。
+ * 路径已失效的规则留在它本来的层级位置标红，同时把祖先链自动展开（{@code makeVisible}），
+ * 项目树上已经没有的节点照样一眼看得到。这个列表是用户唯一能发现并清掉它们的地方，
+ * 所以还给了工具栏上的「清除失效路径」一键删。
+ * </p>
+ * <p>
+ * 被前面同「路径 + 扩展名」的规则盖住、永远不会生效的那些标灰显示（多半是手改配置时复制粘贴
+ * 留下的），对应工具栏上的「清理重复规则」。只标不删：这文件在用户项目根目录里，会进版本库，
+ * 插件不背着人重写它。
+ * </p>
+ * <p>
+ * 只有 {@code path}、自己没配任何规则的<b>纯目录容器</b>节点只为撑起层级，用文件夹图标、
+ * 没有 {@code XmlEntity}，双击靠 {@link com.plugins.infotip.gui.compone.MyTreeNode#getFullPath()} 跳到对应目录。
  * </p>
  * <p>
  * 被前面同「路径 + 扩展名」的规则盖住、永远不会生效的那些标灰显示（多半是手改配置时复制粘贴
@@ -102,9 +114,9 @@ public class NoteTreeView extends Tree {
     private NoteTreeView(@NotNull Project project) {
         super(new DefaultMutableTreeNode("备注列表"));
         this.project = project;
-        //不做树，根节点就没有存在的意义了；也不留展开箭头的缩进
+        //根节点不显示，但要留展开箭头：7.0.2 起列表按目录层级做成了树
         setRootVisible(false);
-        setShowsRootHandles(false);
+        setShowsRootHandles(true);
         setCellRenderer(new NoteCellRenderer());
     }
 
@@ -227,20 +239,28 @@ public class NoteTreeView extends Tree {
                 final Object obj = node.getUserEntity();
                 if (obj instanceof XmlEntity) {
                     navigate(project, (XmlEntity) obj, node.isShadowed());
+                } else if (!trimmed(node.getFullPath()).isEmpty()) {
+                    //纯目录容器没有 entity，双击跳到它对应的目录（还在的话）
+                    TreesUtils.Navigation(project, node.getFullPath());
                 }
             }
         });
     }
 
     /**
-     * 重建整个列表，路径已失效的排在最前面
+     * 重建整棵树：按规则路径的目录层级组织，失效的规则在原位标红、其祖先链自动展开
      * <p>
-     * 失效的必须让用户一眼看见：项目树上已经没有它们的节点了，不排上去就得自己往下翻。
+     * 7.0.2 之前是平铺一行一条。配置本身在 7.0.0 改成了嵌套结构，列表跟着做成树，结构和
+     * 配置文件、项目树都对得上。单链目录会压平成一段（{@code src/main/java} 一个节点而非三层），
+     * 所以不会出现当初担心的「一条深路径撑出五层空目录」。
+     * </p>
+     * <p>
+     * 失效的规则不再拎到最前面，而是留在它本来的位置标红——但会把它的祖先链自动展开
+     * （`makeVisible`），项目树上已经没有的节点照样一眼看得到。
      * </p>
      * <p>
      * 顺手按 {@link TreesUtils#ruleKey} 查重：键相同的第二条及以后的规则被前面那条完全盖住，
-     * 一辈子不会生效（三类规则都是先到先得），标灰显示并攒进 {@link #shadowedEntities}。
-     * 只标不删——文件是用户手改的，静默重写不合适。
+     * 一辈子不会生效，标灰显示并攒进 {@link #shadowedEntities}。只标不删。
      * </p>
      */
     private void reload() {
@@ -249,42 +269,198 @@ public class NoteTreeView extends Tree {
         root.removeAllChildren();
         missingEntities.clear();
         shadowedEntities.clear();
-        final List<MyTreeNode> missing = new ArrayList<>();
-        final List<MyTreeNode> alive = new ArrayList<>();
+
+        final Seg segRoot = new Seg("");
         final List<XmlEntity> entities = XmlStorage.getXmlEntity(project);
         if (null != entities) {
             final Set<String> seen = new HashSet<>();
             for (XmlEntity entity : entities) {
-                //键要在建节点之前登记：没有文字的规则不进列表，但它照样占着这条键，
-                //后面同键的那条确实不生效
+                //键要在建节点之前登记：后面同键的那条确实不生效
                 final boolean shadowed = !seen.add(TreesUtils.ruleKey(entity));
                 if (shadowed) {
                     shadowedEntities.add(entity);
                 }
-                final MyTreeNode node = buildNode(project, entity, shadowed);
-                //没有文字可显示、路径又还在、也没被盖住的规则不进列表，见 buildNode
-                if (null == node) {
-                    continue;
+                Seg cursor = segRoot;
+                for (String segment : NodePaths.segments(entity.getPath())) {
+                    cursor = cursor.child(segment);
                 }
-                if (node.isMissing()) {
-                    missing.add(node);
-                    missingEntities.add(entity);
-                } else {
-                    alive.add(node);
-                }
+                cursor.rules.add(new Rule(entity, shadowed));
             }
         }
-        for (MyTreeNode node : missing) {
-            root.add(node);
+
+        final List<MyTreeNode> reveal = new ArrayList<>();
+        for (Seg child : segRoot.children.values()) {
+            root.add(toNode(child, "", reveal));
         }
-        for (MyTreeNode node : alive) {
-            root.add(node);
+        //只写 extension 的全项目类型规则挂在根 Seg 上，直接铺在最外层
+        for (Rule rule : segRoot.rules) {
+            root.add(leaf(rule, reveal));
         }
-        //reload 要放在加完子节点之后：root.add 走的是 DefaultMutableTreeNode 自己的方法，
-        //不发 model 事件，先 reload 再 add 的话新节点得等下一次重绘才出得来
+        //reload 要放在加完子节点之后：root.add 不发 model 事件
         model.reload();
-        //rootVisible=false 的树，根节点自己也要展开，否则一行都看不到
         expandPath(new TreePath(root));
+        //把失效节点的祖先链展开，makeVisible 会一路展开父节点
+        for (MyTreeNode node : reveal) {
+            makeVisible(new TreePath(node.getPath()));
+        }
+    }
+
+    /**
+     * 把一个 {@link Seg} 转成树节点，沿途压平单链的纯容器
+     * <p>
+     * 一个路径上可能既有目录自己的备注（路径规则），又有限定在这个目录的类型规则，还有子目录。
+     * 目录节点承载路径规则，类型规则作为子叶子跟在后面，子目录递归展开——和配置文件的嵌套一致。
+     * </p>
+     *
+     * @param parentPath 父节点的完整路径，最外层传空串
+     * @param reveal     收集需要展开祖先的失效节点
+     */
+    private MyTreeNode toNode(Seg seg, String parentPath, List<MyTreeNode> reveal) {
+        //压平：自己没规则、又只有一个孩子的纯容器，和孩子并成一段
+        String label = seg.segment;
+        Seg node = seg;
+        while (node.rules.isEmpty() && node.children.size() == 1) {
+            final Seg only = node.children.values().iterator().next();
+            label = label + "/" + only.segment;
+            node = only;
+        }
+        final String fullPath = NodePaths.join(parentPath, label);
+
+        //这一层的路径规则（第一条没有 extension 的）落在节点自己身上，其余的当子叶子
+        Rule own = null;
+        for (Rule rule : node.rules) {
+            if (isPathRule(rule.entity)) {
+                own = rule;
+                break;
+            }
+        }
+        final MyTreeNode result = dirNode(label, fullPath, own, reveal);
+        //先铺类型规则和被盖住的重复路径规则（都不是这一层的主规则），再铺子目录
+        for (Rule rule : node.rules) {
+            if (rule != own) {
+                result.add(leaf(rule, reveal));
+            }
+        }
+        for (Seg child : node.children.values()) {
+            result.add(toNode(child, fullPath, reveal));
+        }
+        return result;
+    }
+
+    /**
+     * 建目录 / 文件节点本体
+     *
+     * @param own 这个路径自己的路径规则，纯容器传 {@code null}
+     */
+    private MyTreeNode dirNode(String label, String fullPath, Rule own, List<MyTreeNode> reveal) {
+        if (null == own) {
+            //纯容器：只为撑起层级，用文件夹图标、不查失效，双击靠 fullPath 跳目录
+            return new MyTreeNode(label).setFullPath(fullPath).setIcon(fit(AllIcons.Nodes.Folder));
+        }
+        final XmlEntity entity = own.entity;
+        final String text = firstNonEmpty(trimmed(entity.getNote()), trimmed(entity.getLabel()), label);
+        final MyTreeNode result = new MyTreeNode(text).setUserEntity(entity)
+                .setFullPath(fullPath).setShadowed(own.shadowed);
+        final VirtualFile file = TreesUtils.findProjectFile(project, entity.getPath());
+        if (null == file) {
+            result.setMissing(true).setIcon(fit(AllIcons.General.Error));
+            missingEntities.add(entity);
+            reveal.add(result);
+            return result;
+        }
+        if (file.isDirectory()) {
+            return result.setIcon(fit(AllIcons.Nodes.Folder));
+        }
+        return result.setIcon(fit(FileTypeManager.getInstance().getFileTypeByFileName(file.getName()).getIcon()));
+    }
+
+    /**
+     * 建一条规则的叶子节点：类型规则（*.ext）和被盖住的重复路径规则都走这里
+     */
+    private MyTreeNode leaf(Rule rule, List<MyTreeNode> reveal) {
+        final XmlEntity entity = rule.entity;
+        final boolean typeRule = !trimmed(entity.getExtension()).isEmpty();
+        final String scope = trimmed(entity.getPath());
+        final String text = firstNonEmpty(trimmed(entity.getNote()), trimmed(entity.getLabel()), "");
+        final String display;
+        if (typeRule) {
+            final String suffix = "*." + trimmed(entity.getExtension()) + " @ " + (scope.isEmpty() ? "整个项目" : scope);
+            display = text.isEmpty() ? suffix : text + "  [" + suffix + "]";
+        } else {
+            //被盖住的重复路径规则，没写文字就拿路径兜底
+            display = text.isEmpty() ? scope : text;
+        }
+        final MyTreeNode result = new MyTreeNode(display).setUserEntity(entity)
+                .setFullPath(scope).setShadowed(rule.shadowed);
+        //只写 extension 的全项目规则没有路径可查，永远算有效
+        final boolean projectWide = typeRule && scope.isEmpty();
+        final VirtualFile file = projectWide ? null : TreesUtils.findProjectFile(project, entity.getPath());
+        if (!projectWide && null == file) {
+            result.setMissing(true).setIcon(fit(AllIcons.General.Error));
+            missingEntities.add(entity);
+            reveal.add(result);
+            return result;
+        }
+        if (typeRule) {
+            return result.setIcon(extensionIcon(entity.getExtension()));
+        }
+        //重复的路径规则，图标按它指向的目录 / 文件给
+        if (null != file && file.isDirectory()) {
+            return result.setIcon(fit(AllIcons.Nodes.Folder));
+        }
+        return result.setIcon(null == file ? fit(AllIcons.General.Error)
+                : fit(FileTypeManager.getInstance().getFileTypeByFileName(file.getName()).getIcon()));
+    }
+
+    private static boolean isPathRule(XmlEntity entity) {
+        return trimmed(entity.getExtension()).isEmpty();
+    }
+
+    private static String firstNonEmpty(String... values) {
+        for (String value : values) {
+            if (null != value && !value.isEmpty()) {
+                return value;
+            }
+        }
+        return "";
+    }
+
+    /**
+     * 建树用的中间节点，一个 Seg 对应一段目录名
+     */
+    private static class Seg {
+
+        private final String segment;
+
+        private final java.util.LinkedHashMap<String, Seg> children = new java.util.LinkedHashMap<>();
+
+        /**
+         * 完整路径正好等于这个 Seg 的规则，可能不止一条（路径规则 + 限定此目录的类型规则 + 重复项）
+         */
+        private final List<Rule> rules = new ArrayList<>();
+
+        Seg(String segment) {
+            this.segment = segment;
+        }
+
+        Seg child(String segment) {
+            return children.computeIfAbsent(segment, Seg::new);
+        }
+    }
+
+    /**
+     * 一条规则加上它是否被前面同键规则盖住
+     */
+    private static class Rule {
+
+        private final XmlEntity entity;
+
+        private final boolean shadowed;
+
+        Rule(XmlEntity entity, boolean shadowed) {
+            this.entity = entity;
+            this.shadowed = shadowed;
+        }
     }
 
     /**
@@ -391,47 +567,6 @@ public class NoteTreeView extends Tree {
     }
 
     /**
-     * 建一个节点，同时把图标、路径失效和被覆盖状态算好存进去
-     * <p>
-     * 图标表示这条规则作用在什么上（目录 / 哪类文件 / 路径已失效），不是用户自己配的那个图标——
-     * 配的图标在项目树上已经看得到，摆这里反而会盖掉目录和文件的区分。
-     * </p>
-     * <p>
-     * 存不存在只在这里查一次，不放渲染器里：渲染器每帧对每个可见行都要调一次，不能碰 VFS。
-     * </p>
-     *
-     * @param shadowed 前面已经有一条同键的规则了，这条不会生效，见 {@link TreesUtils#ruleKey}
-     * @return 没有任何文字可显示、路径又还在、也没被盖住的规则返回 {@code null}，调用方跳过不加进列表
-     */
-    private static MyTreeNode buildNode(Project project, XmlEntity entity, boolean shadowed) {
-        final String extension = entity.getExtension();
-        final boolean typeRule = !trimmed(extension).isEmpty();
-        final boolean scoped = !trimmed(entity.getPath()).isEmpty();
-        //只写 extension 的全项目规则没有路径可查，永远算有效；
-        //其余的（含既没路径也没扩展名的空规则）查不到文件就是失效
-        final boolean projectWide = typeRule && !scoped;
-        final VirtualFile file = projectWide ? null : TreesUtils.findProjectFile(project, entity.getPath());
-        final boolean missing = !projectWide && null == file;
-        //被盖住的和失效的一样：不显示就等于用户在哪都发现不了它，所以没写文字时拿路径兜底
-        final String label = label(entity, typeRule, missing || shadowed);
-        if (label.isEmpty()) {
-            return null;
-        }
-        final MyTreeNode node = new MyTreeNode(label).setUserEntity(entity).setShadowed(shadowed);
-        if (missing) {
-            return node.setMissing(true).setIcon(fit(AllIcons.General.Error));
-        }
-        //类型规则的 path 是限定目录，图标按它管的那类文件给
-        if (typeRule) {
-            return node.setIcon(extensionIcon(extension));
-        }
-        if (file.isDirectory()) {
-            return node.setIcon(fit(AllIcons.Nodes.Folder));
-        }
-        return node.setIcon(fit(FileTypeManager.getInstance().getFileTypeByFileName(file.getName()).getIcon()));
-    }
-
-    /**
      * 扩展名对应的文件类型图标，认不出来的扩展名会落到 UnknownFileType 的图标
      */
     private static Icon extensionIcon(String extension) {
@@ -443,44 +578,6 @@ public class NoteTreeView extends Tree {
      */
     private static Icon fit(Icon icon) {
         return null == icon ? AllIcons.FileTypes.Any_type : IconsUtils.fit(icon);
-    }
-
-    /**
-     * 列表里显示的文字，返回空串表示这条规则整个不进列表
-     * <p>
-     * 用户写的东西优先：备注（title）→ 覆盖的显示名（presentableText）。类型规则再补上
-     * 「*.扩展名 @ 生效范围」，不然看不出它管的是哪一批文件。
-     * </p>
-     * <p>
-     * 两个都没写的规则（只设了颜色 / 图标 / 删除线的那些）分两种情况：
-     * </p>
-     * <ul>
-     *   <li><b>看得见效果的不进列表</b>：效果在项目树上本来就看得见，列表里却只有空白一行，
-     *   认不出是哪条也点不动，而它的入口就在项目树的右键菜单上。</li>
-     *   <li><b>路径失效或被覆盖的必须进列表</b>：前者在项目树上连节点都没有了，后者压根不生效，
-     *   列表是用户唯一能发现并清掉它的地方。没有文字可显示，就拿它配的路径当标题。</li>
-     * </ul>
-     *
-     * @param forceShow 这条规则在项目树上看不到效果（路径失效或被前面同键的规则盖住），
-     *                  没写文字也得显示出来
-     */
-    private static String label(XmlEntity entity, boolean typeRule, boolean forceShow) {
-        String text = trimmed(entity.getNote());
-        if (text.isEmpty()) {
-            text = trimmed(entity.getLabel());
-        }
-        if (typeRule) {
-            final String scope = trimmed(entity.getPath());
-            final String suffix = "*." + trimmed(entity.getExtension()) + " @ " + (scope.isEmpty() ? "整个项目" : scope);
-            if (!text.isEmpty()) {
-                return text + "  [" + suffix + "]";
-            }
-            return forceShow ? suffix : "";
-        }
-        if (!text.isEmpty()) {
-            return text;
-        }
-        return forceShow ? trimmed(entity.getPath()) : "";
     }
 
     private static String trimmed(String value) {
