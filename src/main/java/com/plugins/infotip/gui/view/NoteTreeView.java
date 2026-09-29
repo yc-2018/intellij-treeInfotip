@@ -25,6 +25,7 @@ import com.intellij.ui.treeStructure.Tree;
 import com.intellij.util.ui.JBUI;
 import com.intellij.util.ui.UIUtil;
 import com.plugins.infotip.PluginStartupActivity;
+import com.plugins.infotip.gui.ColorsUtils;
 import com.plugins.infotip.gui.IconsUtils;
 import com.plugins.infotip.gui.compone.MyTreeNode;
 import com.plugins.infotip.storage.NodePaths;
@@ -550,15 +551,15 @@ public class NoteTreeView extends Tree {
                 .setFullPath(fullPath).setShadowed(own.shadowed);
         final VirtualFile file = TreesUtils.findProjectFile(project, entity.getPath());
         if (null == file) {
+            //失效优先：路径没了就用错误图标，不管它配没配图标
             result.setMissing(true).setIcon(fit(AllIcons.General.Error));
             missingEntities.add(entity);
             reveal.add(result);
             return result;
         }
-        if (file.isDirectory()) {
-            return result.setIcon(fit(AllIcons.Nodes.Folder));
-        }
-        return result.setIcon(fit(FileTypeManager.getInstance().getFileTypeByFileName(file.getName()).getIcon()));
+        final Icon structural = fit(file.isDirectory() ? AllIcons.Nodes.Folder
+                : FileTypeManager.getInstance().getFileTypeByFileName(file.getName()).getIcon());
+        return result.setIcon(ruleIcon(entity, structural));
     }
 
     /**
@@ -580,11 +581,19 @@ public class NoteTreeView extends Tree {
             reveal.add(result);
             return result;
         }
-        if (null != file && file.isDirectory()) {
-            return result.setIcon(fit(AllIcons.Nodes.Folder));
-        }
-        return result.setIcon(null == file ? fit(AllIcons.Nodes.Folder)
-                : fit(FileTypeManager.getInstance().getFileTypeByFileName(file.getName()).getIcon()));
+        final Icon structural = fit(null != file && !file.isDirectory()
+                ? FileTypeManager.getInstance().getFileTypeByFileName(file.getName()).getIcon()
+                : AllIcons.Nodes.Folder);
+        return result.setIcon(ruleIcon(entity, structural));
+    }
+
+    /**
+     * 规则配了图标就用它，好让侧边栏和项目树看着一致；没配就用表示「作用在什么上」的结构图标
+     * （目录 / 文件类型）。和 {@link com.plugins.infotip.trees.TreesStyle} 取图标用的是同一个方法
+     */
+    private static Icon ruleIcon(XmlEntity entity, Icon structural) {
+        final Icon configured = IconsUtils.findFitIcon(entity.getIcon());
+        return null != configured ? configured : structural;
     }
 
     private static String firstNonEmpty(String... values) {
@@ -947,8 +956,29 @@ public class NoteTreeView extends Tree {
                 append("  被前面同路径的规则盖住，", warning);
                 append("不生效", strikeoutWarning);
             } else {
-                append(text, SimpleTextAttributes.REGULAR_ATTRIBUTES);
+                //正常规则：按它配的文字色和删除线渲染，让侧边栏成为项目树效果的预览。
+                //失效（红）、被覆盖（灰）两种状态更要紧，仍旧盖过配色，走上面两个分支。
+                append(text, ruleTextAttributes(node));
             }
+        }
+
+        /**
+         * 由规则配置拼出文字样式：文字色 + 删除线。都没配就用默认前景色
+         */
+        private static SimpleTextAttributes ruleTextAttributes(MyTreeNode node) {
+            final Object obj = node.getUserEntity();
+            if (!(obj instanceof XmlEntity)) {
+                return SimpleTextAttributes.REGULAR_ATTRIBUTES;
+            }
+            final XmlEntity entity = (XmlEntity) obj;
+            final Color color = ColorsUtils.toColor(entity.getColor());
+            final int style = entity.isStrikeEnabled()
+                    ? SimpleTextAttributes.STYLE_STRIKEOUT : SimpleTextAttributes.STYLE_PLAIN;
+            if (null == color && SimpleTextAttributes.STYLE_PLAIN == style) {
+                return SimpleTextAttributes.REGULAR_ATTRIBUTES;
+            }
+            //color 为 null 时传 null，SimpleTextAttributes 会用默认前景色
+            return new SimpleTextAttributes(style, color);
         }
     }
 }

@@ -82,6 +82,11 @@
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
       <ul>
+        <p>7.1.2</p>
+        <li>「目录备注」树现在也按规则配置渲染：配了图标就显示那个图标（没配才用目录 / 文件类型图标），文字套上配的颜色和删除线，等于项目树效果的预览。失效（红）和被覆盖（灰）两种状态更要紧，仍旧盖过配色</li>
+        <li>The "Directory notes" tree now reflects each rule's own styling: its configured icon (falling back to the folder / file-type icon), text color and strikethrough — a preview of the project-tree effect. Dead (red) and shadowed (grey) states still take precedence</li>
+      </ul>
+      <ul>
         <p>7.1.1</p>
         <li>「目录备注」树的展开层数数字 1-10 加了方框，看着像按钮、也把那行的空白填起来</li>
         <li>定位改成<b>单击</b>、<b>双击目录</b>展开 / 收起：以前双击目录会又展开又定位，两件事一起发生。单击一个文件立刻定位，单击目录短暂等一下（被双击打断就只展开）</li>
