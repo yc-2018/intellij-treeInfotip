@@ -82,6 +82,12 @@
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
       <ul>
+        <p>7.1.4</p>
+        <li>「清除失效路径」「清理重复规则」两个图标补上深色变体，跟刷新按钮一样浅色主题深灰、深色主题浅灰自动切换，不再是一团黑</li>
+        <li>删掉插件 logo SVG 里的 c2pa 元数据（文件从 8.6KB 瘦到不到 1KB）；两个明暗 logo 尺寸一致（都是 40×40、同一套图形，只差颜色）</li>
+        <li>The two toolbar icons now have dark variants and switch shade with the theme like the Refresh button; stripped c2pa metadata from the plugin logo SVGs</li>
+      </ul>
+      <ul>
         <p>7.1.3</p>
         <li>「目录备注」工具栏的按钮和「展开」层数数字并到同一行，省一行高度</li>
         <li>换了图标：「清除失效路径」用扫把、「清理重复规则」用垃圾桶，插件 logo 也换了新的（带深色变体）</li>
