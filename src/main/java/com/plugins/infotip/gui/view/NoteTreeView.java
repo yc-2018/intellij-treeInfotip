@@ -10,6 +10,7 @@ import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.ui.SimpleToolWindowPanel;
 import com.intellij.openapi.vfs.VirtualFile;
@@ -36,7 +37,6 @@ import com.plugins.infotip.trees.TreesUtils;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.BorderFactory;
-import javax.swing.BoxLayout;
 import javax.swing.Icon;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
@@ -108,6 +108,16 @@ public class NoteTreeView extends Tree {
     private static final String PLACE_TOOLBAR = "TreeInfotipNoteListToolbar";
 
     private static final String PLACE_POPUP = "TreeInfotipNoteListPopup";
+
+    /**
+     * 「清除失效路径」的扫把图标，放在 {@code resources/icons} 下，深色主题由平台的图标灰度反转自动适配
+     */
+    private static final Icon ICON_CLEAR_MISSING = IconLoader.getIcon("/icons/clearMissing.svg", NoteTreeView.class);
+
+    /**
+     * 「清理重复规则」的垃圾桶图标
+     */
+    private static final Icon ICON_CLEAR_SHADOWED = IconLoader.getIcon("/icons/clearShadowed.svg", NoteTreeView.class);
 
     private final Project project;
 
@@ -194,7 +204,7 @@ public class NoteTreeView extends Tree {
     }
 
     /**
-     * 顶部控件：第一行是按钮工具栏，第二行是「展开」+ 一排可点的层数数字
+     * 顶部控件：一行里放按钮工具栏 + 「展开」+ 一排可点的层数数字
      */
     private JComponent createToolbar() {
         final DefaultActionGroup group = new DefaultActionGroup();
@@ -205,11 +215,11 @@ public class NoteTreeView extends Tree {
         //不设 targetComponent 平台会警告，action 的 update 也拿不到正确的 DataContext
         toolbar.setTargetComponent(this);
 
-        final JPanel box = new JPanel();
-        box.setLayout(new BoxLayout(box, BoxLayout.Y_AXIS));
-        box.add(toolbar.getComponent());
-        box.add(buildDepthRow());
-        return box;
+        //按钮和「展开」层数数字放同一行
+        final JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+        row.add(toolbar.getComponent());
+        row.add(buildDepthRow());
+        return row;
     }
 
     /**
@@ -813,7 +823,7 @@ public class NoteTreeView extends Tree {
     private class ClearMissingAction extends AnAction {
 
         ClearMissingAction() {
-            super("清除失效路径", "删掉所有路径已经不存在的规则", AllIcons.Actions.GC);
+            super("清除失效路径", "删掉所有路径已经不存在的规则", ICON_CLEAR_MISSING);
         }
 
         @Override
@@ -845,7 +855,7 @@ public class NoteTreeView extends Tree {
     private class ClearShadowedAction extends AnAction {
 
         ClearShadowedAction() {
-            super("清理重复规则", "删掉被前面同路径规则盖住、永远不会生效的那些规则", AllIcons.Actions.Copy);
+            super("清理重复规则", "删掉被前面同路径规则盖住、永远不会生效的那些规则", ICON_CLEAR_SHADOWED);
         }
 
         @Override

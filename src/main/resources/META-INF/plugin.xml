@@ -82,6 +82,12 @@
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
       <ul>
+        <p>7.1.3</p>
+        <li>「目录备注」工具栏的按钮和「展开」层数数字并到同一行，省一行高度</li>
+        <li>换了图标：「清除失效路径」用扫把、「清理重复规则」用垃圾桶，插件 logo 也换了新的（带深色变体）</li>
+        <li>The "Directory notes" toolbar buttons and the "expand depth" numbers are now on one row; new icons for "clear dead paths" (broom) and "clean duplicates" (trash), plus a new plugin logo with a dark variant</li>
+      </ul>
+      <ul>
         <p>7.1.2</p>
         <li>「目录备注」树现在也按规则配置渲染：配了图标就显示那个图标（没配才用目录 / 文件类型图标），文字套上配的颜色和删除线，等于项目树效果的预览。失效（红）和被覆盖（灰）两种状态更要紧，仍旧盖过配色</li>
         <li>The "Directory notes" tree now reflects each rule's own styling: its configured icon (falling back to the folder / file-type icon), text color and strikethrough — a preview of the project-tree effect. Dead (red) and shadowed (grey) states still take precedence</li>
