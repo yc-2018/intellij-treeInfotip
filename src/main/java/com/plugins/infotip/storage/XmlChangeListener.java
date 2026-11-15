@@ -47,6 +47,7 @@ public class XmlChangeListener {
                         XmlFileUtils.loadXmlFile(project);
                         XmlStorage.parsing(project, (XmlFile) file);
                     }
+                    //PyCharm 的模板 PSI 不是 XmlFile，这里先不动，交给 childrenChanged
                 }
             }
 
@@ -60,11 +61,9 @@ public class XmlChangeListener {
 
             @Override
             public void childRemoved(@NotNull PsiTreeChangeEvent psiTreeChangeEvent) {
-                PsiElement child = psiTreeChangeEvent.getChild();
-                if (child instanceof XmlFile) {
-                    if (XmlFileUtils.isFileName(((XmlFile) child).getName())) {
-                        XmlStorage.clear(project);
-                    }
+                final PsiElement child = psiTreeChangeEvent.getChild();
+                if (child instanceof PsiFile && XmlFileUtils.isFileName(((PsiFile) child).getName())) {
+                    XmlStorage.clear(project);
                 }
             }
 
@@ -76,9 +75,10 @@ public class XmlChangeListener {
             public void childrenChanged(@NotNull PsiTreeChangeEvent psiTreeChangeEvent) {
                 if (XmlFileUtils.isFileName(psiTreeChangeEvent)) {
                     final PsiFile file = psiTreeChangeEvent.getFile();
-                    if (file instanceof XmlFile) {
-                        XmlStorage.parsing(project, (XmlFile) file);
-                    }
+                    //事件里的 PSI 不一定是 XmlFile：PyCharm 的 Jinja2 / Django 会把 .xml 接管成
+                    //模板 PSI，这时改用缓存里的 XML PSI 重新解析，否则内存里的规则列表永远是启动时那份
+                    final XmlFile xmlFile = file instanceof XmlFile ? (XmlFile) file : currentXmlFile(project);
+                    XmlStorage.parsing(project, xmlFile);
                 }
             }
 
@@ -94,6 +94,19 @@ public class XmlChangeListener {
             public void dispose() {
             }
         });
+    }
+
+    /**
+     * 缓存里的 XML PSI；失效了就重新找一次
+     *
+     * <p>只会在事件文件不是 {@link XmlFile}（PyCharm 的模板 PSI）时用到。</p>
+     */
+    private static XmlFile currentXmlFile(Project project) {
+        final XmlFile cached = XmlFileUtils.getXmlFile(project);
+        if (null != cached && cached.isValid()) {
+            return cached;
+        }
+        return XmlFileUtils.loadXmlFile(project);
     }
 
 }

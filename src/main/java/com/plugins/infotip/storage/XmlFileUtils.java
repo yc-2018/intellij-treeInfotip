@@ -1,15 +1,19 @@
 package com.plugins.infotip.storage;
 
+import com.intellij.lang.xml.XMLLanguage;
 import com.intellij.notification.NotificationGroupManager;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.actionSystem.AnActionEvent;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.editor.Document;
+import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.fileTypes.LanguageFileType;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vfs.LocalFileSystem;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.psi.FileViewProvider;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiFileFactory;
 import com.intellij.psi.PsiManager;
@@ -135,9 +139,12 @@ public class XmlFileUtils {
                     final XmlFile xmlFile = createXmlFile(project);
                     callback.onCreatePath(pathInfo, xmlFile, project);
                 } else {
-                    final List<XmlEntity> xmlEntitys = XmlStorage.getXmlEntity(project);
+                    List<XmlEntity> xmlEntitys = XmlStorage.getXmlEntity(project);
                     if (null == xmlEntitys) {
                         XmlStorage.parsing(project, fileXml);
+                        //parsing 会把新列表放进缓存，这里必须重新取一次：拿解析前那个 null
+                        //继续往下走，右键菜单就什么都不会弹
+                        xmlEntitys = XmlStorage.getXmlEntity(project);
                     }
                     final ArrayList<XmlEntity> newXmlEntity = new ArrayList<XmlEntity>();
                     if (null != xmlEntitys) {
@@ -373,17 +380,35 @@ public class XmlFileUtils {
      * <p>
      * VFS 刷新必须留在这个方法<b>外面</b>：同步刷新自己要开写操作，套进读操作里是换一个错。
      * </p>
+     * <p>
+     * <b>PyCharm 特例</b>：装了 Jinja2 / Django 模板支持的项目里，模板语言会接管 {@code .xml}，
+     * {@code findFile} 拿到的是模板 PSI 而不是 {@code XmlFile}，整条读写链路就会以为配置不存在
+     * （IDEA / WebStorm 没有这层接管）。视图提供者本身带着 XML 分支，从那里取才是真正的 XML PSI。
+     * </p>
      *
      * @param project     项目
      * @param virtualFile 文件
      * @return XmlFile，不是 XML 就返回 null
      */
     private static XmlFile findXmlPsi(Project project, VirtualFile virtualFile) {
-        final PsiFile[] holder = new PsiFile[1];
+        final XmlFile[] holder = new XmlFile[1];
         ApplicationManager.getApplication().runReadAction(() -> {
-            holder[0] = PsiManager.getInstance(project).findFile(virtualFile);
+            final PsiManager manager = PsiManager.getInstance(project);
+            final PsiFile file = manager.findFile(virtualFile);
+            if (file instanceof XmlFile) {
+                holder[0] = (XmlFile) file;
+                return;
+            }
+            final FileViewProvider provider = manager.findViewProvider(virtualFile);
+            //先看视图提供者支不支持 XML 再取：文件类型被用户改成纯文本之类的情况下 getPsi 没有意义
+            if (null != provider && provider.getLanguages().contains(XMLLanguage.INSTANCE)) {
+                final PsiFile xml = provider.getPsi(XMLLanguage.INSTANCE);
+                if (xml instanceof XmlFile) {
+                    holder[0] = (XmlFile) xml;
+                }
+            }
         });
-        return holder[0] instanceof XmlFile ? (XmlFile) holder[0] : null;
+        return holder[0];
     }
 
     /**
@@ -414,7 +439,30 @@ public class XmlFileUtils {
         }
         final VirtualFile virtualFile = xmlFile.getVirtualFile();
         final String fileName = null == virtualFile ? XMLFileName : virtualFile.getName();
+        //刚由 WriteCommandAction 改完的只是编辑器文档，磁盘上还是旧内容。
+        //必须先显式存盘再走下面的刷新/重新取 PSI，否则用户切过去看到的还是旧文件。
+        saveDocument(virtualFile);
         return loadSaveFileXml(project, xmlFile.getText(), fileName);
+    }
+
+    /**
+     * 把文档里尚未保存的改动写到磁盘
+     *
+     * <p>
+     * {@code saveDocument} 必须在写操作里调用。调用点有的本来就在写命令里（改备注），
+     * 有的只在 EDT 上（新建配置），这里统一自己包一层；写操作是可重入的，多包一层没有副作用。
+     * </p>
+     */
+    private static void saveDocument(VirtualFile virtualFile) {
+        if (null == virtualFile) {
+            return;
+        }
+        ApplicationManager.getApplication().runWriteAction(() -> {
+            final Document document = FileDocumentManager.getInstance().getDocument(virtualFile);
+            if (null != document && document.isWritable()) {
+                FileDocumentManager.getInstance().saveDocument(document);
+            }
+        });
     }
 
     /**
