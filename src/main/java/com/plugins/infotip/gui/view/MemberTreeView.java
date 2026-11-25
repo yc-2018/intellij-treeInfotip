@@ -121,6 +121,8 @@ public class MemberTreeView extends Tree {
 
     private final JBCheckBox propertyBox = new JBCheckBox("属性", true);
 
+    private final JBCheckBox noteBox = new JBCheckBox("过滤没备注的", false);
+
     private final JSlider depthSlider = new JSlider(1, MAX_DEPTH, DEFAULT_DEPTH);
 
     private final JLabel depthLabel = new JLabel();
@@ -162,7 +164,7 @@ public class MemberTreeView extends Tree {
     }
 
     /**
-     * 顶部控件区：第一行是刷新按钮 + 两个勾选框，第二行是层数拉杆
+     * 顶部控件区：第一行是刷新按钮 + 三个勾选框，第二行是层数拉杆
      */
     private JComponent createToolbar() {
         final DefaultActionGroup group = new DefaultActionGroup();
@@ -175,6 +177,7 @@ public class MemberTreeView extends Tree {
         first.add(toolbar.getComponent());
         first.add(methodBox);
         first.add(propertyBox);
+        first.add(noteBox);
 
         final JPanel second = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 0));
         second.add(new JLabel("层数"));
@@ -203,8 +206,10 @@ public class MemberTreeView extends Tree {
         });
         methodBox.setToolTipText("显示方法 / 函数");
         propertyBox.setToolTipText("显示属性 / 字段 / 变量");
+        noteBox.setToolTipText("只显示有注释（备注）的成员");
         methodBox.addActionListener(e -> reload());
         propertyBox.addActionListener(e -> reload());
+        noteBox.addActionListener(e -> reload());
     }
 
     private void updateDepthLabel() {
@@ -383,15 +388,16 @@ public class MemberTreeView extends Tree {
             //不是基于树的 builder（图片、二进制之类的自定义编辑器）就拿不到节点，没别的办法
             return "这类文件没有结构信息";
         }
-        //三个控件的值先取出来：下面的 try 里读不到局部作用域外的它们
+        //四个控件的值先取出来：下面的 try 里读不到局部作用域外的它们
         final int depth = depthSlider.getValue();
         final boolean methods = methodBox.isSelected();
         final boolean properties = propertyBox.isSelected();
+        final boolean onlyCommented = noteBox.isSelected();
         //createStructureViewModel(null) 不传 Editor：不需要跟随光标，只要一棵树
         final StructureViewModel structure = ((TreeBasedStructureViewBuilder) builder).createStructureViewModel(null);
         try {
             for (TreeElement child : structure.getRoot().getChildren()) {
-                final MemberNode node = build(child, 1, depth, methods, properties);
+                final MemberNode node = build(child, 1, depth, methods, properties, onlyCommented);
                 if (null != node) {
                     root.add(node);
                 }
@@ -406,6 +412,9 @@ public class MemberTreeView extends Tree {
         if (!methods && !properties) {
             return "勾选上面的「方法」或「属性」";
         }
+        if (onlyCommented) {
+            return "这个文件里没有带备注的成员";
+        }
         return "这个文件里没有可显示的成员";
     }
 
@@ -419,21 +428,23 @@ public class MemberTreeView extends Tree {
     /**
      * 递归把一个结构视图节点转成 {@link MemberNode}
      *
-     * @param element    结构视图给的节点
-     * @param depth      当前层数，从 1 开始
-     * @param maxDepth   拉杆上设的层数上限
-     * @param methods    要不要方法
-     * @param properties 要不要属性
+     * @param element       结构视图给的节点
+     * @param depth         当前层数，从 1 开始
+     * @param maxDepth      拉杆上设的层数上限
+     * @param methods       要不要方法
+     * @param properties    要不要属性
+     * @param onlyCommented 要不要过滤没备注的
      * @return 不该显示时返回 {@code null}
      */
-    private MemberNode build(TreeElement element, int depth, int maxDepth, boolean methods, boolean properties) {
+    private MemberNode build(TreeElement element, int depth, int maxDepth, boolean methods,
+                             boolean properties, boolean onlyCommented) {
         if (nodes >= MAX_NODES) {
             return null;
         }
         final List<MemberNode> children = new ArrayList<>();
         if (depth < maxDepth) {
             for (TreeElement child : element.getChildren()) {
-                final MemberNode node = build(child, depth + 1, maxDepth, methods, properties);
+                final MemberNode node = build(child, depth + 1, maxDepth, methods, properties, onlyCommented);
                 if (null != node) {
                     children.add(node);
                 }
@@ -445,7 +456,9 @@ public class MemberTreeView extends Tree {
             return null;
         }
         final PsiElement psi = psiOf(element);
-        //只在叶子上按勾选过滤：内层节点（类、接口）被滤掉的话，它下面的成员就成了孤儿
+        final String comment = PsiCommentUtils.read(psi);
+        //只在没有子节点时按勾选过滤：内层节点（类、接口）被滤掉的话，它下面的成员就成了孤儿。
+        //「过滤没备注的」也一样——孩子全被滤光的父节点这时自己也成了叶子，没备注就一起收掉
         if (children.isEmpty()) {
             final int kind = classify(psi, name);
             if (KIND_METHOD == kind && !methods) {
@@ -454,12 +467,15 @@ public class MemberTreeView extends Tree {
             if (KIND_PROPERTY == kind && !properties) {
                 return null;
             }
+            if (onlyCommented && comment.isEmpty()) {
+                return null;
+            }
         }
         nodes++;
         final MemberNode node = new MemberNode(name)
                 .setIcon(fit(presentation.getIcon(false)))
                 .setElement(psi)
-                .setComment(PsiCommentUtils.read(psi));
+                .setComment(comment);
         for (MemberNode child : children) {
             node.add(child);
         }

@@ -19,7 +19,7 @@
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>7.1.5</version>
+    <version>7.2.0</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -81,6 +81,11 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+      <ul>
+        <p>7.2.0</p>
+        <li>「文件成员」工具栏新增「过滤没备注的」勾选框：勾上后只留下有注释的成员，没有注释的成员、以及孩子全被滤光又没自己注释的父节点一起隐藏</li>
+        <li>Added a "过滤没备注的" (hide uncommented) checkbox to the File Members toolbar: only members with comments stay visible; members without comments and emptied parents with no comment of their own are hidden</li>
+      </ul>
       <ul>
         <p>7.1.5</p>
         <li>修复 PyCharm 里右键「添加文字备注」等菜单输入内容点确定后，配置文件没有任何变化的问题：PyCharm 的 Jinja2 / Django 模板支持会把项目里的 .xml 接管成模板 PSI，插件拿不到 XML 配置，读写链路一路静默放弃。现在改从文件视图提供者的 XML 分支取真正的 XML PSI，并补上改完立刻存盘、存盘后重新解析</li>
