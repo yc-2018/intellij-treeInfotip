@@ -28,6 +28,8 @@
 
 刷新只在**切编辑器**（`FileEditorManagerListener.FILE_EDITOR_MANAGER` 的 `selectionChanged`）和**点刷新按钮**时发生，没挂 PSI 变化监听：边打字边重建整棵树太贵。`connect(project)` 把连接挂在项目上，项目关掉自动断开，不用自己 dispose。
 
+刷新右边的**名称 / 备注互换按钮**（7.3.0 起）走的是另一条路：只翻一个 `swapped` 布尔值再 `repaint()`，模型不重建。互换模式下 renderer 把备注排到名称前面，并截到前 `SWAPPED_COMMENT_LIMIT = 10` 个**码点**再补省略号（按码点截，避免把 emoji 之类的字符劈成半个）；没备注的行照旧只显示名称。图标是自带 SVG（`/icons/swap.svg` + `_dark`），不用平台 `AllIcons`——平台图标在两个编译目标的版本之间会消失。
+
 ## 读注释（`PsiCommentUtils`）
 
 `PsiCommentUtils.read(psiElement)` 是「文件成员」每项后面那段注释的唯一来源，严格四级、命中一级就不往下找：**文档注释（`/**`）→ 多行注释（`/*`）→ 同行尾部的单行注释 → 紧贴在上方的连续单行注释**（一段空白里出现两个及以上换行就算空行，直接断开）。

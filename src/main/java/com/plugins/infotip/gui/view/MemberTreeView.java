@@ -20,6 +20,7 @@ import com.intellij.openapi.fileEditor.FileEditorManagerListener;
 import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.SimpleToolWindowPanel;
+import com.intellij.openapi.util.IconLoader;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
@@ -75,6 +76,16 @@ public class MemberTreeView extends Tree {
     private static final String PLACE_TOOLBAR = "TreeInfotipMemberListToolbar";
 
     /**
+     * 名称 / 备注互换模式的按钮图标，深浅两套由 IconLoader 按 {@code _dark} 后缀自动选
+     */
+    private static final Icon ICON_SWAP = IconLoader.getIcon("/icons/swap.svg", MemberTreeView.class);
+
+    /**
+     * 互换模式下备注只留前 10 个字，再长就截断加省略号
+     */
+    private static final int SWAPPED_COMMENT_LIMIT = 10;
+
+    /**
      * 层数上限。再深的树在这个宽度的侧边栏里已经没法看了
      */
     private static final int MAX_DEPTH = 10;
@@ -128,6 +139,11 @@ public class MemberTreeView extends Tree {
     private final JLabel depthLabel = new JLabel();
 
     /**
+     * 名称和备注是否互换显示位置；只影响渲染，不改模型
+     */
+    private boolean swapped;
+
+    /**
      * 本次 {@link #reload()} 已经建了多少个节点，用来卡 {@link #MAX_NODES}
      */
     private int nodes;
@@ -164,11 +180,12 @@ public class MemberTreeView extends Tree {
     }
 
     /**
-     * 顶部控件区：第一行是刷新按钮 + 三个勾选框，第二行是层数拉杆
+     * 顶部控件区：第一行是刷新 / 互换按钮 + 三个勾选框，第二行是层数拉杆
      */
     private JComponent createToolbar() {
         final DefaultActionGroup group = new DefaultActionGroup();
         group.add(new RefreshAction());
+        group.add(new SwapAction());
         final ActionToolbar toolbar = ActionManager.getInstance().createActionToolbar(PLACE_TOOLBAR, group, true);
         //不设 targetComponent 平台会警告，action 的 update 也拿不到正确的 DataContext
         toolbar.setTargetComponent(this);
@@ -561,10 +578,33 @@ public class MemberTreeView extends Tree {
     }
 
     /**
-     * 成员名用正常色，后面跟的注释用灰色。拼成一个字符串就没法分开上色了，所以
-     * {@link MemberNode} 把两段分开存
+     * 名称和备注换位置：备注挪到前面并截短，再点一下换回来
      */
-    private static class MemberCellRenderer extends ColoredTreeCellRenderer {
+    private class SwapAction extends AnAction {
+
+        SwapAction() {
+            super("名称备注互换",
+                    "名称和备注换位置；备注太长只显示前 " + SWAPPED_COMMENT_LIMIT + " 个字，再点一下换回来",
+                    ICON_SWAP);
+        }
+
+        @Override
+        public void actionPerformed(@NotNull AnActionEvent e) {
+            toggleSwap();
+        }
+    }
+
+    private void toggleSwap() {
+        swapped = !swapped;
+        //只换渲染顺序，模型没变，重画就够
+        repaint();
+    }
+
+    /**
+     * 成员名用正常色，后面跟的注释用灰色。拼成一个字符串就没法分开上色了，所以
+     * {@link MemberNode} 把两段分开存。互换模式下两段换个位置，过长的备注截短。
+     */
+    private class MemberCellRenderer extends ColoredTreeCellRenderer {
 
         @Override
         public void customizeCellRenderer(@NotNull JTree tree, Object value, boolean selected,
@@ -576,10 +616,27 @@ public class MemberTreeView extends Tree {
             }
             final MemberNode node = (MemberNode) value;
             setIcon(node.getIcon());
+            final String comment = node.getComment();
+            if (swapped && !comment.isEmpty()) {
+                append(shorten(comment), SimpleTextAttributes.GRAYED_ATTRIBUTES);
+                append("  " + node.getName(), SimpleTextAttributes.REGULAR_ATTRIBUTES);
+                return;
+            }
             append(node.getName(), SimpleTextAttributes.REGULAR_ATTRIBUTES);
-            if (!node.getComment().isEmpty()) {
-                append("  " + node.getComment(), SimpleTextAttributes.GRAYED_ATTRIBUTES);
+            if (!comment.isEmpty()) {
+                append("  " + comment, SimpleTextAttributes.GRAYED_ATTRIBUTES);
             }
         }
+    }
+
+    /**
+     * 互换模式下把过长的备注截到 {@link #SWAPPED_COMMENT_LIMIT} 个字并补省略号。
+     * 按码点截，避免把 emoji 之类的字符劈成半个。
+     */
+    private static String shorten(String comment) {
+        if (comment.codePointCount(0, comment.length()) <= SWAPPED_COMMENT_LIMIT) {
+            return comment;
+        }
+        return comment.substring(0, comment.offsetByCodePoints(0, SWAPPED_COMMENT_LIMIT)) + "…";
     }
 }

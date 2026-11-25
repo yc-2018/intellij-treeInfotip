@@ -19,7 +19,7 @@
     <vendor url="https://github.com/yc-2018/intellij-treeInfotip">yc-2018</vendor>
 
     <!-- 插件版本（打包时由 gradle.properties 中的 pluginVersion 覆盖） -->
-    <version>7.2.1</version>
+    <version>7.3.0</version>
     <!-- please see https://confluence.jetbrains.com/display/IDEADEV/Build+Number+Ranges for description -->
     <idea-version since-build="223"/>
     <!-- 插件的描述 -->
@@ -81,6 +81,11 @@
 
     <!-- 插件的功能 -->
     <change-notes><![CDATA[
+      <ul>
+        <p>7.3.0</p>
+        <li>「文件成员」刷新按钮右边新增名称 / 备注互换按钮（双横箭头图标）：点一下备注排到名称前面、过长的备注只显示前 10 个字加省略号，再点一下换回来</li>
+        <li>Added a swap button (double horizontal arrows) next to Refresh in the File Members toolbar: one click puts comments before names and cuts comments longer than 10 characters with an ellipsis, click again to switch back</li>
+      </ul>
       <ul>
         <p>7.2.1</p>
         <li>修复 Python 的变量（模块变量、类属性）没被算进「属性」的问题：这类节点对应的 PSI 是 PyTargetExpression，原来落进「其他」分类永远显示，取消勾选「属性」也藏不掉；现在按属性处理</li>
