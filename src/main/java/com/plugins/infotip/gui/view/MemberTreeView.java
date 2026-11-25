@@ -498,7 +498,8 @@ public class MemberTreeView extends Tree {
      * {@code PsiMethodImpl} / {@code PsiFieldImpl}，TS 是 {@code TypeScriptFunction}，
      * Kotlin 是 {@code KtNamedFunction} / {@code KtProperty}，Python 是 {@code PyFunction}……
      * 名字里带 Method / Function / Constructor 的算方法，带 Field / Property / Variable /
-     * Constant 的算属性。
+     * Constant / TargetExpression 的算属性（Python 的模块变量和类属性是
+     * {@code PyTargetExpression}，原名里一个既有词都不沾）。
      * </p>
      * <p>
      * 两头都不沾的归 {@link #KIND_OTHER}，而 OTHER <b>永远显示</b>：宁可多显示几行，也不要
@@ -529,7 +530,8 @@ public class MemberTreeView extends Tree {
             return KIND_METHOD;
         }
         if (simpleName.contains("Field") || simpleName.contains("Property")
-                || simpleName.contains("Variable") || simpleName.contains("Constant")) {
+                || simpleName.contains("Variable") || simpleName.contains("Constant")
+                || simpleName.contains("TargetExpression")) {
             return KIND_PROPERTY;
         }
         return KIND_OTHER;
